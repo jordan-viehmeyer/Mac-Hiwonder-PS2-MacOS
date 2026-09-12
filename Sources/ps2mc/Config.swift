@@ -56,14 +56,20 @@ struct LookBinding: Codable {
     /// 0 disables the filter entirely. 25–50 ms takes the edge off without feeling laggy.
     var smoothingMs: Double
 
+    // Why these numbers: the window server truncates mouse deltas to whole pixels, so a
+    // pan of N px/s arrives as N discrete 1 px steps per second no matter how smooth the
+    // driver's own maths is. Fine aim therefore gets smoother by moving *more* pixels,
+    // not fewer. The old 1100 px/s also meant a 360° turn took over two seconds, which is
+    // both unplayable and the very condition that makes the stepping visible. At 2800 a
+    // full turn takes about 0.85 s and a slow pan runs ~190 steps/s instead of ~43.
     static let minecraftDefault = LookBinding(
-        sensitivityX: 1100,
-        sensitivityY: 800,
-        deadzone: 0.12,
-        exponent: 1.7,
+        sensitivityX: 2800,
+        sensitivityY: 2000,
+        deadzone: 0.10,
+        exponent: 1.5,
         invertY: false,
         invertX: false,
-        smoothingMs: 35
+        smoothingMs: 28
     )
 }
 
@@ -97,7 +103,11 @@ struct Config: Codable {
     var buttonBitOrder: [ButtonID] = ButtonID.defaultBitOrder
 
     /// How often stick state is converted into mouse motion, in hertz.
-    var pollRateHz: Double = 125
+    ///
+    /// Deliberately above the receiver's own 125 Hz report rate: the smoothing filter
+    /// interpolates between reports, so the extra ticks space the emitted motion more
+    /// evenly in time rather than inventing detail.
+    var pollRateHz: Double = 250
 
     var hotbarMode: HotbarMode = .scroll
 

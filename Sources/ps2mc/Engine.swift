@@ -35,14 +35,6 @@ final class Engine {
     /// Auto-repeat schedule for `@repeat` actions.
     private var repeatDue: [Slot: Date] = [:]
 
-    /// Sub-pixel mouse motion carried into the next tick.
-    ///
-    /// At 125 Hz a gentle push produces well under one pixel per tick. Rounding that to an
-    /// integer each time floors it to zero, so fine aim used to be completely dead below
-    /// roughly a third of stick travel and stepped in 1 px jumps just above it. Keeping the
-    /// remainder and spending it once it adds up to a whole pixel makes slow pans smooth.
-    private var mouseResidual = (x: 0.0, y: 0.0)
-
     /// Low-pass state for each look stick, so the camera eases in and out of motion
     /// instead of snapping to whatever the stick reads on a single tick.
     private var lookSmoothed: [StickSide: (x: Double, y: Double)] = [:]
@@ -136,13 +128,9 @@ final class Engine {
             dy += smoothed.y * stick.look.sensitivityY * dt * (stick.look.invertY ? -1 : 1)
         }
 
-        // Spend whole pixels, keep the remainder for next tick.
-        dx += mouseResidual.x
-        dy += mouseResidual.y
-        let stepX = dx.rounded(.towardZero)
-        let stepY = dy.rounded(.towardZero)
-        mouseResidual = (dx - stepX, dy - stepY)
-        synth.moveMouse(deltaX: stepX, deltaY: stepY)
+        // Pass the real-valued motion through; EventSynth owns the quantisation, since
+        // the absolute position and the delta field have different precision limits.
+        synth.moveMouse(deltaX: dx, deltaY: dy)
     }
 
     /// Apply a radial deadzone and a response curve.
@@ -398,10 +386,9 @@ final class Engine {
         latched.removeAll()
         repeatDue.removeAll()
         pendingRelease.removeAll()
-        // Drop the filter and the sub-pixel remainder too, so resuming starts from rest
-        // rather than replaying motion banked before the pause.
+        // Drop the filter too, so resuming starts from rest rather than replaying motion
+        // banked before the pause.
         lookSmoothed.removeAll()
-        mouseResidual = (0, 0)
     }
 
     private func log(_ message: String) {

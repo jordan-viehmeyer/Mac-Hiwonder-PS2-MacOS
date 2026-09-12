@@ -38,13 +38,13 @@
   "hotbarMode" : "scroll",
   "leftStick" : {
     "look" : {
-      "deadzone" : 0.12,
-      "exponent" : 1.7,
+      "deadzone" : 0.1,
+      "exponent" : 1.5,
       "invertX" : false,
       "invertY" : false,
-      "sensitivityX" : 1100,
-      "sensitivityY" : 800,
-      "smoothingMs" : 35
+      "sensitivityX" : 2800,
+      "sensitivityY" : 2000,
+      "smoothingMs" : 28
     },
     "move" : {
       "directionTolerance" : 0.38,
@@ -59,19 +59,19 @@
     "role" : "move"
   },
   "matchAnyGamepad" : true,
-  "pollRateHz" : 125,
+  "pollRateHz" : 250,
   "productID" : 1397,
   "repeatDelayMs" : 350,
   "repeatIntervalMs" : 120,
   "rightStick" : {
     "look" : {
-      "deadzone" : 0.12,
-      "exponent" : 1.7,
+      "deadzone" : 0.1,
+      "exponent" : 1.5,
       "invertX" : false,
       "invertY" : false,
-      "sensitivityX" : 1100,
-      "sensitivityY" : 800,
-      "smoothingMs" : 35
+      "sensitivityX" : 2800,
+      "sensitivityY" : 2000,
+      "smoothingMs" : 28
     },
     "move" : {
       "directionTolerance" : 0.38,

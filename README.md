@@ -282,17 +282,26 @@ values:
 
 | Field | Default | Meaning |
 |---|---|---|
-| `sensitivityX` | `1100` | Pixels of mouse travel per second at full deflection |
-| `sensitivityY` | `800` | Same, vertically — lower than X on purpose, as in most shooters |
-| `deadzone` | `0.12` | Radial deadzone, 0–1. Raise it if the camera drifts at rest |
-| `exponent` | `1.7` | Response curve. `1.0` is linear; higher gives finer aim near centre |
-| `smoothingMs` | `35` | Smoothing time constant. Higher is smoother but less immediate; `0` disables |
+| `sensitivityX` | `2800` | Pixels of mouse travel per second at full deflection |
+| `sensitivityY` | `2000` | Same, vertically — lower than X on purpose, as in most shooters |
+| `deadzone` | `0.10` | Radial deadzone, 0–1. Raise it if the camera drifts at rest |
+| `exponent` | `1.5` | Response curve. `1.0` is linear; higher gives finer aim near centre |
+| `smoothingMs` | `28` | Smoothing time constant. Higher is smoother but less immediate; `0` disables |
 | `invertY` | `false` | Flight-sim style inverted vertical look |
 | `invertX` | `false` | Invert horizontal look |
 
 Camera too slow? Raise `sensitivityX`/`sensitivityY`. Twitchy at small movements? Raise
 `exponent`. Drifting when you let go? Raise `deadzone`. Feels laggy? Lower `smoothingMs`
-toward `0`. Still steppy? Raise `pollRateHz`.
+toward `0`.
+
+**If the camera feels steppy, raise sensitivity — do not lower it.** macOS truncates
+synthetic mouse deltas to whole pixels, so a pan of *N* px/s reaches the game as *N*
+discrete one-pixel steps per second. Moving more pixels means finer steps, not coarser
+ones. Lowering sensitivity to "calm it down" makes stepping worse. If that leaves the
+camera turning faster than you like, raise `sensitivityX`/`sensitivityY` further **and**
+lower Minecraft's own sensitivity slider by the same proportion: the angular speed stays
+put while the motion gets smoother. This is the same trick as running a high-DPI mouse at
+low in-game sensitivity.
 
 **Move tuning** (`leftStick.move` by default):
 
@@ -316,7 +325,7 @@ Movement engaging too late? Lower `threshold`. Diagonals hard to hold? Lower
 | `productID` | `1397` (`0x0575`) | USB product ID to match |
 | `matchAnyGamepad` | `true` | Also accept any HID gamepad/joystick, for other adapter clones |
 | `buttonBitOrder` | `y b a x l1 r1 l2 r2 select start l3 r3 analog` | Which button each report bit is. Written by `calibrate` |
-| `pollRateHz` | `125` | How often stick state becomes mouse motion. Clamped to 30–500 |
+| `pollRateHz` | `250` | How often stick state becomes mouse motion. Clamped to 30–500. Above the receiver's own 125 Hz on purpose — smoothing interpolates between reports, so extra ticks space the motion more evenly |
 | `hotbarMode` | `"scroll"` | `scroll` posts a wheel notch; `numbers` tracks the slot and presses `1`–`9` |
 | `repeatIntervalMs` | `120` | Gap between `@repeat` fires |
 | `repeatDelayMs` | `350` | Delay before `@repeat` starts repeating |
@@ -385,8 +394,10 @@ Then re-grant. If you moved or reinstalled the binary, re-grant for the new path
 **Movement keys stutter** — raise `releaseDelayMs`, then `releaseHysteresis`. Raise
 `threshold` if it triggers too eagerly.
 
-**Camera feels steppy or dead at small pushes** — lower `deadzone` and `exponent`, and
-check `smoothingMs` is not far above 50. Raising `pollRateHz` to 250 also helps.
+**Camera feels steppy or dead at small pushes** — raise `sensitivityX`/`sensitivityY`, and
+lower Minecraft's own sensitivity to compensate if the result turns too fast. Lowering
+ps2mc's sensitivity makes stepping worse, not better; see
+[Sticks](#sticks). Lowering `deadzone` and `exponent` also helps.
 
 **Camera feels laggy** — lower `smoothingMs` toward `0`.
 
@@ -421,10 +432,30 @@ subscribes to the whole report rather than registering a callback per HID elemen
 so the camera pans at a constant speed even when the receiver coalesces or drops reports
 while the stick is held still.
 
-**Sub-pixel motion.** A gentle push produces well under one pixel of travel per tick.
-Rounding that to an integer every tick floors it to zero, which is why slow pans on naive
-drivers feel dead and then jump. ps2mc keeps the remainder and spends it once it adds up to
-a whole pixel, so fine aim is continuous all the way down to the deadzone.
+**Sub-pixel motion.** macOS truncates the mouse *delta* field to whole pixels — a posted
+`0.25` arrives as `0`, measured directly. A gentle push produces well under one pixel per
+tick, so rounding each tick independently floors it to zero and slow pans feel dead and
+then jump. ps2mc keeps the remainder and spends it once it reaches a whole pixel. Absolute
+cursor position has no such limit and does carry fractional values, so it advances by the
+exact amount every tick.
+
+**Dead-reckoned cursor.** The pointer position is tracked internally rather than re-read
+from the window server each tick. The system's copy does not reflect motion ps2mc has just
+posted — at 125 Hz only 3 of 200 posted 1 px moves were visible in the very next read — so
+building each event's position from it means working off a lagging base. That read can also
+block for tens of milliseconds, which is not something to have in a hot path running 250
+times a second. Position is re-seeded from the real cursor whenever the stick returns to
+rest, so moving the physical mouse in between is picked up rather than fought, and it is
+clamped to the active displays so a long push cannot walk it off into empty coordinate
+space.
+
+**Why sensitivity affects smoothness.** Because deltas are whole pixels, a pan of *N* px/s
+reaches the game as *N* discrete steps per second. Smoothness at low speed is a function of
+how many pixels the driver moves, not how clean its arithmetic is. The defaults were raised
+from 1100 to 2800 px/s for exactly this reason: at 1100 a 360° turn took over two seconds,
+which is both sluggish to play and precisely the regime where individual pixel steps become
+visible. At 2800 a full turn takes about 0.85 s and a slow pan runs roughly 190 steps/s
+instead of 43.
 
 **Smoothing.** The shaped stick vector is low-pass filtered with a time constant rather
 than a fixed per-tick blend — `alpha = 1 - e^(-dt/tau)` — so the feel does not change if

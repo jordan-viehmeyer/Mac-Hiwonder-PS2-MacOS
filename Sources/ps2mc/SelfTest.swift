@@ -132,7 +132,9 @@ enum SelfTest {
 
         // MARK: Look curve
         let look = LookBinding.minecraftDefault
-        let inside = Engine.shape(x: 0.1, y: 0.05, look: look)
+        // Derive the probe from the configured deadzone so retuning cannot rot the test.
+        let wellInside = look.deadzone * 0.5
+        let inside = Engine.shape(x: wellInside * 0.9, y: wellInside * 0.4, look: look)
         expect(inside.0 == 0 && inside.1 == 0, "inside the deadzone produces no motion")
         expectClose(Engine.shape(x: 1.0, y: 0, look: look).0, 1.0,
                     "full deflection reaches full scale", tolerance: 0.001)
@@ -150,13 +152,18 @@ enum SelfTest {
         // A gentle push must still move the camera. Before sub-pixel accumulation this
         // rounded to zero every tick, leaving fine aim completely dead below about a third
         // of stick travel — the single biggest source of choppy camera movement.
-        let dt = 1.0 / 125
+        let dt = 1.0 / Config().pollRateHz
+        let ticksPerSecond = Int(Config().pollRateHz)
         var residual = 0.0
         var pixelsMoved = 0.0
         var ticksThatMoved = 0
-        // 18% of travel: a deliberate, slow pan, the kind fine aiming is made of.
-        let gentle = Engine.shape(x: 0.18, y: 0, look: look).0
-        for _ in 0..<125 {
+        // A deliberate, slow pan just past the deadzone — the kind fine aiming is made of,
+        // and slow enough that a single tick moves well under one pixel.
+        let gentleDeflection = look.deadzone + (1 - look.deadzone) * 0.06
+        let gentle = Engine.shape(x: gentleDeflection, y: 0, look: look).0
+        expect(gentle * look.sensitivityX * dt < 0.5,
+               "the probe is slow enough that one tick alone rounds to nothing")
+        for _ in 0..<ticksPerSecond {
             let raw = gentle * look.sensitivityX * dt + residual
             let step = raw.rounded(.towardZero)
             residual = raw - step
@@ -167,6 +174,8 @@ enum SelfTest {
         expectClose(pixelsMoved, gentle * look.sensitivityX, "a second of travel lands on target",
                     tolerance: 1.5)
         expect(ticksThatMoved > 1, "motion is spread across ticks rather than one jump")
+        expect(ticksThatMoved < ticksPerSecond,
+               "a slow pan does not move on every tick — that is what the remainder is for")
         // Without the carried remainder this same push produces nothing at all.
         let naive = (gentle * look.sensitivityX * dt).rounded()
         expectEqual(naive, 0, "the naive per-tick rounding this replaced floored to zero")
@@ -182,6 +191,25 @@ enum SelfTest {
         let fine = settle(tau: 0.035, dt: 1.0 / 250, steps: 250)
         expectClose(coarse, fine, "smoothing does not change with poll rate", tolerance: 0.001)
         expect(settle(tau: 0.035, dt: dt, steps: 1) < 0.3, "one tick only eases part-way")
+
+        // MARK: Look throughput
+        // The window server truncates mouse deltas to whole pixels, so a pan of N px/s
+        // arrives as N discrete steps per second. Smoothness at low speed is therefore a
+        // function of how many pixels the driver moves, not how clean its arithmetic is.
+        // These bounds guard the two ends: a slow pan must clear the rate at which
+        // individual steps read as stutter, and a full push must turn at a usable speed.
+        let slowPan = Engine.shape(x: 0.25, y: 0, look: look).0 * look.sensitivityX
+        expect(slowPan > 100,
+               "a slow pan clears ~100 steps/s, above the point where steps read as stutter")
+        let fullPush = Engine.shape(x: 1.0, y: 0, look: look).0 * look.sensitivityX
+        expectClose(fullPush, look.sensitivityX, "full deflection reaches full sensitivity",
+                    tolerance: 0.5)
+        // Minecraft needs roughly 2400 px of travel for a 360° turn at default in-game
+        // sensitivity. Under about half a turn per second the camera feels sluggish, and
+        // sluggish is exactly the regime where pixel stepping becomes visible.
+        let turnsPerSecond = fullPush / 2400
+        expect(turnsPerSecond > 0.8, "a full push turns at a usable speed")
+        expect(turnsPerSecond < 3.0, "a full push is not so fast as to be uncontrollable")
 
         // MARK: Directional engagement
         // Engagement is radial, so every direction starts at the same distance. The old
