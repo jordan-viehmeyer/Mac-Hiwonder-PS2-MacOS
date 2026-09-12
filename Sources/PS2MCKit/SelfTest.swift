@@ -8,7 +8,7 @@ import Foundation
 /// Command Line Tools install that builds this package has no usable XCTest or
 /// swift-testing module, and a check the user can run against their own build
 /// (`ps2mc selftest`) is more useful here than one only CI can run.
-enum SelfTest {
+public enum SelfTest {
     private static var failures: [String] = []
     private static var checks = 0
 
@@ -56,7 +56,7 @@ enum SelfTest {
         return bytes
     }
 
-    static func run() -> Int32 {
+    public static func run() -> Int32 {
         let order = ButtonID.defaultBitOrder
 
         // MARK: Report decoding

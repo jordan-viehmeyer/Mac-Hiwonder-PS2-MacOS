@@ -9,15 +9,15 @@ import IOKit.hid
 /// without Input Monitoring the controller reads as permanently idle, while without
 /// Accessibility the sticks read fine but nothing reaches the game. Checking both up front
 /// turns two confusing silences into one actionable message.
-enum Permissions {
-    enum Status {
+public enum Permissions {
+    public enum Status {
         case granted
         case denied
         case unknown
     }
 
     /// Needed to *read* the gamepad.
-    static func inputMonitoring() -> Status {
+    public static func inputMonitoring() -> Status {
         switch IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) {
         case kIOHIDAccessTypeGranted: return .granted
         case kIOHIDAccessTypeDenied: return .denied
@@ -26,24 +26,24 @@ enum Permissions {
     }
 
     /// Needed to *post* keyboard and mouse events.
-    static func accessibility(prompt: Bool = false) -> Status {
+    public static func accessibility(prompt: Bool = false) -> Status {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: prompt]
         return AXIsProcessTrustedWithOptions(options as CFDictionary) ? .granted : .denied
     }
 
     @discardableResult
-    static func requestInputMonitoring() -> Bool {
+    public static func requestInputMonitoring() -> Bool {
         IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
     }
 
-    static func openSettings(pane: String) {
+    public static func openSettings(pane: String) {
         let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)")!
         NSWorkspace.shared.open(url)
     }
 
     /// Print a report and return whether the driver can actually run.
     @discardableResult
-    static func report(requesting: Bool) -> Bool {
+    public static func report(requesting: Bool) -> Bool {
         func mark(_ status: Status) -> String {
             switch status {
             case .granted: return "✅ granted"

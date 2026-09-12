@@ -6,9 +6,9 @@ import IOKit.hid
 ///
 /// The adapter packs everything into one 27-byte report with no report ID, so subscribing
 /// to the whole report is simpler and cheaper than registering a callback per HID element.
-final class HIDReader {
-    typealias ReportHandler = ([UInt8]) -> Void
-    typealias ConnectionHandler = (Bool, String) -> Void
+public final class HIDReader {
+    public typealias ReportHandler = ([UInt8]) -> Void
+    public typealias ConnectionHandler = (Bool, String) -> Void
 
     private let manager: IOHIDManager
     private var reportBuffer = [UInt8](repeating: 0, count: 64)
@@ -21,8 +21,8 @@ final class HIDReader {
     private let productID: Int
     private let matchAnyGamepad: Bool
 
-    init(config: Config, onReport: @escaping ReportHandler,
-         onConnectionChange: @escaping ConnectionHandler) {
+    public init(config: Config, onReport: @escaping ReportHandler,
+                onConnectionChange: @escaping ConnectionHandler) {
         self.vendorID = config.vendorID
         self.productID = config.productID
         self.matchAnyGamepad = config.matchAnyGamepad
@@ -48,7 +48,7 @@ final class HIDReader {
     }
 
     /// Describes a device for log output.
-    static func describe(_ device: IOHIDDevice) -> String {
+    public static func describe(_ device: IOHIDDevice) -> String {
         func string(_ key: String) -> String? {
             IOHIDDeviceGetProperty(device, key as CFString) as? String
         }
@@ -64,7 +64,7 @@ final class HIDReader {
 
     /// Begin matching and scheduling on the current thread's run loop.
     /// The caller is expected to run that run loop afterwards.
-    func start() throws {
+    public func start() throws {
         var criteria: [[String: Any]] = [
             [kIOHIDVendorIDKey: vendorID, kIOHIDProductIDKey: productID]
         ]
@@ -102,7 +102,7 @@ final class HIDReader {
         }
     }
 
-    func stop() {
+    public func stop() {
         IOHIDManagerUnscheduleFromRunLoop(manager, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
         IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
     }
@@ -140,10 +140,10 @@ final class HIDReader {
     }
 }
 
-enum HIDError: LocalizedError {
+public enum HIDError: LocalizedError {
     case managerOpenFailed(IOReturn)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .managerOpenFailed(let code):
             return "could not open the HID manager — \(HIDError.describe(code))"
@@ -151,7 +151,7 @@ enum HIDError: LocalizedError {
     }
 
     /// Turn the handful of IOReturn codes this driver actually provokes into advice.
-    static func describe(_ code: IOReturn) -> String {
+    public static func describe(_ code: IOReturn) -> String {
         switch code {
         case kIOReturnNotPermitted, kIOReturnNotPrivileged:
             return "permission denied. Grant Input Monitoring to your terminal in "

@@ -1,7 +1,7 @@
 import Foundation
 
 /// What a stick drives.
-enum StickRole: String, Codable {
+public enum StickRole: String, Codable {
     /// Drives the mouse cursor — Minecraft camera look.
     case look
     /// Drives four directional keys (WASD by default).
@@ -11,24 +11,32 @@ enum StickRole: String, Codable {
 }
 
 /// Which keys a `move` stick presses, and how far it must travel first.
-struct MoveBinding: Codable {
-    var up: String
-    var down: String
-    var left: String
-    var right: String
+public struct MoveBinding: Codable {
+    public var up: String
+    public var down: String
+    public var left: String
+    public var right: String
     /// Radial distance (0...1) the stick must travel before movement engages.
-    var threshold: Double
+    public var threshold: Double
     /// Extra travel required to *release*, so a stick resting on the edge cannot chatter.
-    var releaseHysteresis: Double
+    public var releaseHysteresis: Double
     /// How much of the push must point along an axis for that direction to count, once
     /// engaged. 0.38 is sin(22.5°), which gives eight equal 45° sectors. Lower widens the
     /// diagonals at the expense of the cardinals; higher does the reverse.
-    var directionTolerance: Double
+    public var directionTolerance: Double
     /// Grace period before a direction is actually released, in milliseconds. Smooths the
     /// transient dips you get rotating the stick between sectors. 0 disables it.
-    var releaseDelayMs: Double
+    public var releaseDelayMs: Double
 
-    static let minecraftDefault = MoveBinding(
+    public init(up: String, down: String, left: String, right: String,
+                threshold: Double, releaseHysteresis: Double,
+                directionTolerance: Double, releaseDelayMs: Double) {
+        self.up = up; self.down = down; self.left = left; self.right = right
+        self.threshold = threshold; self.releaseHysteresis = releaseHysteresis
+        self.directionTolerance = directionTolerance; self.releaseDelayMs = releaseDelayMs
+    }
+
+    public static let minecraftDefault = MoveBinding(
         up: "key:w",
         down: "key:s",
         left: "key:a",
@@ -41,20 +49,20 @@ struct MoveBinding: Codable {
 }
 
 /// Mouse-look tuning for a `look` stick.
-struct LookBinding: Codable {
+public struct LookBinding: Codable {
     /// Pixels of mouse travel per second at full stick deflection.
-    var sensitivityX: Double
-    var sensitivityY: Double
+    public var sensitivityX: Double
+    public var sensitivityY: Double
     /// Radial deadzone as a fraction of full deflection.
-    var deadzone: Double
+    public var deadzone: Double
     /// Response curve exponent. 1.0 is linear; higher gives finer control near centre.
-    var exponent: Double
+    public var exponent: Double
     /// Flip vertical look (classic inverted-Y flight-sim style).
-    var invertY: Bool
-    var invertX: Bool
+    public var invertY: Bool
+    public var invertX: Bool
     /// Smoothing time constant in milliseconds. Larger is smoother but less immediate;
     /// 0 disables the filter entirely. 25–50 ms takes the edge off without feeling laggy.
-    var smoothingMs: Double
+    public var smoothingMs: Double
 
     // Why these numbers: the window server truncates mouse deltas to whole pixels, so a
     // pan of N px/s arrives as N discrete 1 px steps per second no matter how smooth the
@@ -62,7 +70,14 @@ struct LookBinding: Codable {
     // not fewer. The old 1100 px/s also meant a 360° turn took over two seconds, which is
     // both unplayable and the very condition that makes the stepping visible. At 2800 a
     // full turn takes about 0.85 s and a slow pan runs ~190 steps/s instead of ~43.
-    static let minecraftDefault = LookBinding(
+    public init(sensitivityX: Double, sensitivityY: Double, deadzone: Double,
+                exponent: Double, invertY: Bool, invertX: Bool, smoothingMs: Double) {
+        self.sensitivityX = sensitivityX; self.sensitivityY = sensitivityY
+        self.deadzone = deadzone; self.exponent = exponent
+        self.invertY = invertY; self.invertX = invertX; self.smoothingMs = smoothingMs
+    }
+
+    public static let minecraftDefault = LookBinding(
         sensitivityX: 2800,
         sensitivityY: 2000,
         deadzone: 0.10,
@@ -73,14 +88,18 @@ struct LookBinding: Codable {
     )
 }
 
-struct StickConfig: Codable {
-    var role: StickRole
-    var look: LookBinding
-    var move: MoveBinding
+public struct StickConfig: Codable {
+    public var role: StickRole
+    public var look: LookBinding
+    public var move: MoveBinding
+
+    public init(role: StickRole, look: LookBinding, move: MoveBinding) {
+        self.role = role; self.look = look; self.move = move
+    }
 }
 
 /// How `hotbar:next` / `hotbar:prev` reach Minecraft.
-enum HotbarMode: String, Codable {
+public enum HotbarMode: String, Codable {
     /// Post a mouse-wheel notch. Matches Minecraft's own hotbar scrolling and can never
     /// drift out of sync with the game, since the game owns the slot index.
     case scroll
@@ -89,51 +108,53 @@ enum HotbarMode: String, Codable {
     case numbers
 }
 
-struct Config: Codable {
+public struct Config: Codable {
+    public init() {}
+
     /// Bumped when the schema changes so `ps2mc` can migrate or warn.
-    var version: Int = 1
+    public var version: Int = 1
 
     /// USB identifiers to match. Defaults to the HiWonder PS2 receiver.
-    var vendorID: Int = 0x2563
-    var productID: Int = 0x0575
+    public var vendorID: Int = 0x2563
+    public var productID: Int = 0x0575
     /// Fall back to any HID gamepad/joystick if the exact VID/PID is absent.
-    var matchAnyGamepad: Bool = true
+    public var matchAnyGamepad: Bool = true
 
     /// Button bit order in the 13-bit field. Rewritten by `ps2mc calibrate`.
-    var buttonBitOrder: [ButtonID] = ButtonID.defaultBitOrder
+    public var buttonBitOrder: [ButtonID] = ButtonID.defaultBitOrder
 
     /// How often stick state is converted into mouse motion, in hertz.
     ///
     /// Deliberately above the receiver's own 125 Hz report rate: the smoothing filter
     /// interpolates between reports, so the extra ticks space the emitted motion more
     /// evenly in time rather than inventing detail.
-    var pollRateHz: Double = 250
+    public var pollRateHz: Double = 250
 
-    var hotbarMode: HotbarMode = .scroll
+    public var hotbarMode: HotbarMode = .scroll
 
     /// Milliseconds between repeats for `@repeat` actions.
-    var repeatIntervalMs: Double = 120
+    public var repeatIntervalMs: Double = 120
     /// Delay before `@repeat` starts repeating.
-    var repeatDelayMs: Double = 350
+    public var repeatDelayMs: Double = 350
 
     /// Left stick moves, right stick looks — the console-Minecraft convention.
-    var leftStick: StickConfig = StickConfig(
+    public var leftStick: StickConfig = StickConfig(
         role: .move,
         look: .minecraftDefault,
         move: .minecraftDefault
     )
-    var rightStick: StickConfig = StickConfig(
+    public var rightStick: StickConfig = StickConfig(
         role: .look,
         look: .minecraftDefault,
         move: .minecraftDefault
     )
 
     /// Face/shoulder/system buttons.
-    var buttons: [String: String] = Config.defaultButtons
+    public var buttons: [String: String] = Config.defaultButtons
     /// D-pad directions.
-    var dpad: [String: String] = Config.defaultDPad
+    public var dpad: [String: String] = Config.defaultDPad
 
-    static let defaultButtons: [String: String] = [
+    public static let defaultButtons: [String: String] = [
         // --- The mappings called out in the brief -------------------------------
         // Lower triggers are Minecraft's two world-interaction verbs.
         "l2": "mouse:left",          // destroy / attack
@@ -156,7 +177,7 @@ struct Config: Codable {
         "analog": "special:toggleEngine",
     ]
 
-    static let defaultDPad: [String: String] = [
+    public static let defaultDPad: [String: String] = [
         "up": "key:t",               // chat
         "down": "key:f5",            // cycle camera perspective
         "left": "hotbar:1",          // jump to first hotbar slot
@@ -165,16 +186,16 @@ struct Config: Codable {
 
     // MARK: - Persistence
 
-    static var directory: URL {
+    public static var directory: URL {
         let home = FileManager.default.homeDirectoryForCurrentUser
         return home.appendingPathComponent(".config/ps2mc", isDirectory: true)
     }
 
-    static var path: URL {
+    public static var path: URL {
         directory.appendingPathComponent("config.json")
     }
 
-    static func load(from url: URL = Config.path) throws -> Config {
+    public static func load(from url: URL = Config.path) throws -> Config {
         guard FileManager.default.fileExists(atPath: url.path) else {
             let fresh = Config()
             try fresh.save(to: url)
@@ -187,7 +208,7 @@ struct Config: Codable {
         return try decoder.decode(Config.self, from: data)
     }
 
-    func save(to url: URL = Config.path) throws {
+    public func save(to url: URL = Config.path) throws {
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let encoder = JSONEncoder()
@@ -200,7 +221,7 @@ struct Config: Codable {
     ///
     /// `source` is only used to name the file in the error, so a `--config` run points at
     /// the file the user actually edited.
-    func resolveBindings(source: URL? = nil)
+    public func resolveBindings(source: URL? = nil)
         throws -> (buttons: [ButtonID: Action], dpad: [DPadID: Action]) {
         var problems: [String] = []
         var resolvedButtons: [ButtonID: Action] = [:]
@@ -241,10 +262,10 @@ struct Config: Codable {
     }
 }
 
-enum ConfigError: LocalizedError {
+public enum ConfigError: LocalizedError {
     case invalidBindings([String], source: URL)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .invalidBindings(let problems, let source):
             return "invalid bindings in \(source.path):\n  - "

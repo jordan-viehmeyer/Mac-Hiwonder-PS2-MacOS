@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 
 /// How an action behaves while its source button is held.
-enum ActionMode: String, Codable {
+public enum ActionMode: String, Codable {
     /// Press on button-down, release on button-up. The default, and what movement keys want.
     case hold
     /// Press-and-release once per button-down, ignoring how long it is held.
@@ -13,10 +13,10 @@ enum ActionMode: String, Codable {
     case repeatWhileHeld = "repeat"
 }
 
-enum MouseButtonID: String, Codable {
+public enum MouseButtonID: String, Codable {
     case left, right, middle
 
-    var cgButton: CGMouseButton {
+    public var cgButton: CGMouseButton {
         switch self {
         case .left: return .left
         case .right: return .right
@@ -25,7 +25,7 @@ enum MouseButtonID: String, Codable {
     }
 }
 
-enum ScrollDirection: String, Codable {
+public enum ScrollDirection: String, Codable {
     case up, down, left, right
 }
 
@@ -42,7 +42,7 @@ enum ScrollDirection: String, Codable {
 ///     hotbar:next           advance one hotbar slot (respects config.hotbarMode)
 ///     special:toggleEngine  suspend/resume all output
 ///     none                  explicitly unmapped
-enum Action: Equatable {
+public enum Action: Equatable {
     case key(CGKeyCode, name: String, flags: CGEventFlags, mode: ActionMode)
     case mouse(MouseButtonID, mode: ActionMode)
     case scroll(ScrollDirection, amount: Int32)
@@ -53,7 +53,7 @@ enum Action: Equatable {
     case none
 
     /// Actions whose pressed/released state must be tracked to be released later.
-    var isStateful: Bool {
+    public var isStateful: Bool {
         switch self {
         case .key(_, _, _, let mode), .mouse(_, let mode):
             return mode == .hold || mode == .toggle || mode == .repeatWhileHeld
@@ -63,13 +63,13 @@ enum Action: Equatable {
     }
 }
 
-enum ActionParseError: LocalizedError {
+public enum ActionParseError: LocalizedError {
     case unknownKind(String, spec: String)
     case unknownKey(String, spec: String)
     case unknownMode(String, spec: String)
     case malformed(String)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .unknownKind(let kind, let spec):
             return "unknown action kind '\(kind)' in \"\(spec)\" — expected key, combo, mouse, scroll, hotbar, special, or none"
@@ -83,8 +83,8 @@ enum ActionParseError: LocalizedError {
     }
 }
 
-extension Action {
-    static func parse(_ spec: String) throws -> Action {
+public extension Action {
+    public static func parse(_ spec: String) throws -> Action {
         let trimmed = spec.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty || trimmed.lowercased() == "none" { return .none }
 

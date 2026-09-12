@@ -6,7 +6,7 @@ import Foundation
 /// Everything goes out through one `CGEventSource` so the window server treats the driver
 /// as a single coherent input device. Events are posted at `.cghidEventTap`, the lowest
 /// public insertion point, which is what Minecraft's GLFW backend sees.
-final class EventSynth {
+public final class EventSynth {
     private let source: CGEventSource?
     /// Modifier flags currently held down by *us*, so every event we post carries them.
     private var heldFlags: CGEventFlags = []
@@ -33,7 +33,7 @@ final class EventSynth {
     /// Absolute position has no such limit and advances fractionally on every tick.
     private var deltaResidual = (x: 0.0, y: 0.0)
 
-    init() {
+    public init() {
         source = CGEventSource(stateID: .hidSystemState)
         if let source {
             // Without this, macOS suppresses real mouse input for ~250 ms after each
@@ -48,7 +48,7 @@ final class EventSynth {
 
     // MARK: - Keyboard
 
-    func keyDown(_ code: CGKeyCode, flags: CGEventFlags = []) {
+    public func keyDown(_ code: CGKeyCode, flags: CGEventFlags = []) {
         // A modifier used as a plain key must also raise its own flag, otherwise the
         // receiving app sees a bare keycode with no modifier state and ignores it.
         heldFlags.insert(flags)
@@ -56,13 +56,13 @@ final class EventSynth {
         post(keyCode: code, down: true)
     }
 
-    func keyUp(_ code: CGKeyCode, flags: CGEventFlags = []) {
+    public func keyUp(_ code: CGKeyCode, flags: CGEventFlags = []) {
         post(keyCode: code, down: false)
         heldFlags.subtract(flags)
         heldFlags.subtract(Self.implicitFlag(for: code))
     }
 
-    func keyTap(_ code: CGKeyCode, flags: CGEventFlags = []) {
+    public func keyTap(_ code: CGKeyCode, flags: CGEventFlags = []) {
         keyDown(code, flags: flags)
         keyUp(code, flags: flags)
     }
@@ -88,12 +88,12 @@ final class EventSynth {
 
     // MARK: - Mouse buttons
 
-    func mouseDown(_ button: MouseButtonID) {
+    public func mouseDown(_ button: MouseButtonID) {
         heldMouseButtons.insert(button)
         postMouse(button: button, type: Self.downType(button))
     }
 
-    func mouseUp(_ button: MouseButtonID) {
+    public func mouseUp(_ button: MouseButtonID) {
         heldMouseButtons.remove(button)
         postMouse(button: button, type: Self.upType(button))
     }
@@ -139,7 +139,7 @@ final class EventSynth {
     ///
     /// While a mouse button is held the event type must be the matching *drag* type, or
     /// the click-and-hold that Minecraft uses for mining is cancelled mid-swing.
-    func moveMouse(deltaX: Double, deltaY: Double) {
+    public func moveMouse(deltaX: Double, deltaY: Double) {
         guard deltaX != 0 || deltaY != 0 else {
             // At rest, hand the cursor back: the next motion re-seeds from wherever the
             // real mouse left it.
@@ -203,14 +203,14 @@ final class EventSynth {
     }
 
     /// Forget the dead-reckoned position, so the next motion re-seeds from the real cursor.
-    func releaseCursor() {
+    public func releaseCursor() {
         virtualPosition = nil
         deltaResidual = (0, 0)
     }
 
     // MARK: - Scroll
 
-    func scroll(_ direction: ScrollDirection, amount: Int32) {
+    public func scroll(_ direction: ScrollDirection, amount: Int32) {
         var vertical: Int32 = 0
         var horizontal: Int32 = 0
         switch direction {
@@ -230,7 +230,7 @@ final class EventSynth {
 
     /// Release everything we are holding. Called on shutdown and whenever the engine is
     /// suspended, so a crash or a toggle can never leave W or a mouse button stuck down.
-    func releaseAll(keys: [CGKeyCode]) {
+    public func releaseAll(keys: [CGKeyCode]) {
         for button in heldMouseButtons { mouseUp(button) }
         heldMouseButtons.removeAll()
         for code in keys { post(keyCode: code, down: false) }

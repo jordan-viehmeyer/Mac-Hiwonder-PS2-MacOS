@@ -4,18 +4,18 @@ import Foundation
 // default", not "fail to start". The synthesised `Codable` conformances throw on absent
 // keys, so each type spells out a lenient decoder instead.
 
-extension CodingUserInfoKey {
+public extension CodingUserInfoKey {
     /// Set by `ps2mc selftest`, which decodes deliberately broken configs and would
     /// otherwise print repair warnings that read like real failures.
-    static let suppressWarnings = CodingUserInfoKey(rawValue: "ps2mc.suppressWarnings")!
+    public static let suppressWarnings = CodingUserInfoKey(rawValue: "ps2mc.suppressWarnings")!
 }
 
-extension LookBinding {
-    enum CodingKeys: String, CodingKey {
+public extension LookBinding {
+    public enum CodingKeys: String, CodingKey {
         case sensitivityX, sensitivityY, deadzone, exponent, invertY, invertX, smoothingMs
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = LookBinding.minecraftDefault
         sensitivityX = try c.decodeIfPresent(Double.self, forKey: .sensitivityX) ?? d.sensitivityX
@@ -35,13 +35,13 @@ extension LookBinding {
     }
 }
 
-extension MoveBinding {
-    enum CodingKeys: String, CodingKey {
+public extension MoveBinding {
+    public enum CodingKeys: String, CodingKey {
         case up, down, left, right, threshold, releaseHysteresis
         case directionTolerance, releaseDelayMs
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = MoveBinding.minecraftDefault
         up = try c.decodeIfPresent(String.self, forKey: .up) ?? d.up
@@ -64,12 +64,12 @@ extension MoveBinding {
     }
 }
 
-extension StickConfig {
-    enum CodingKeys: String, CodingKey {
+public extension StickConfig {
+    public enum CodingKeys: String, CodingKey {
         case role, look, move
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         role = try c.decodeIfPresent(StickRole.self, forKey: .role) ?? .none
         look = try c.decodeIfPresent(LookBinding.self, forKey: .look) ?? .minecraftDefault
@@ -77,14 +77,14 @@ extension StickConfig {
     }
 }
 
-extension Config {
-    enum CodingKeys: String, CodingKey {
+public extension Config {
+    public enum CodingKeys: String, CodingKey {
         case version, vendorID, productID, matchAnyGamepad, buttonBitOrder
         case pollRateHz, hotbarMode, repeatIntervalMs, repeatDelayMs
         case leftStick, rightStick, buttons, dpad
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = Config()
         version = try c.decodeIfPresent(Int.self, forKey: .version) ?? d.version

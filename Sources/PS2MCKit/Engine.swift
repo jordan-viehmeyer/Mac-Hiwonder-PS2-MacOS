@@ -3,13 +3,13 @@ import Foundation
 
 /// Anything that can be bound to an action. Used as the identity for press/release
 /// bookkeeping so buttons, D-pad directions and stick directions all behave alike.
-enum Slot: Hashable {
+public enum Slot: Hashable {
     case button(ButtonID)
     case dpad(DPadID)
     case move(stick: StickSide, direction: DPadID)
 }
 
-enum StickSide: String, Hashable {
+public enum StickSide: String, Hashable {
     case left, right
 }
 
@@ -17,7 +17,7 @@ enum StickSide: String, Hashable {
 ///
 /// Runs entirely on the HID run-loop thread: input reports and the poll timer are both
 /// scheduled there, so the mutable state below needs no locking.
-final class Engine {
+public final class Engine {
     private let config: Config
     private let synth: EventSynth
     private let bindings: [Slot: Action]
@@ -51,7 +51,7 @@ final class Engine {
     /// itself. Gives the player a way to alt-tab or type without the stick fighting them.
     private(set) var suspended = false
 
-    init(config: Config, synth: EventSynth, verbose: Bool, source: URL? = nil) throws {
+    public init(config: Config, synth: EventSynth, verbose: Bool, source: URL? = nil) throws {
         self.config = config
         self.synth = synth
         self.verbose = verbose
@@ -72,14 +72,14 @@ final class Engine {
 
     // MARK: - Input
 
-    func ingest(report: [UInt8]) {
+    public func ingest(report: [UInt8]) {
         guard let decoded = ControllerState.decode(report: report, bitOrder: config.buttonBitOrder)
         else { return }
         state = decoded
     }
 
     /// Called when the pad disappears: drop every held key so nothing sticks.
-    func handleDisconnect() {
+    public func handleDisconnect() {
         state = ControllerState()
         releaseEverything()
         activeSlots.removeAll()
@@ -87,7 +87,7 @@ final class Engine {
 
     // MARK: - Tick
 
-    func tick() {
+    public func tick() {
         let now = Date()
         let dt = min(now.timeIntervalSince(lastTick), 0.1)  // clamp after a stall
         lastTick = now
@@ -138,7 +138,7 @@ final class Engine {
     /// The deadzone is radial rather than per-axis so that a diagonal push is not clipped
     /// into an axis-aligned one, and the magnitude is rescaled across the remaining travel
     /// so the very first movement past the deadzone is slow instead of jumping.
-    static func shape(x: Double, y: Double, look: LookBinding) -> (Double, Double) {
+    public static func shape(x: Double, y: Double, look: LookBinding) -> (Double, Double) {
         let magnitude = (x * x + y * y).squareRoot()
         guard magnitude > look.deadzone else { return (0, 0) }
         let normalized = min((magnitude - look.deadzone) / (1 - look.deadzone), 1)
@@ -368,7 +368,7 @@ final class Engine {
 
     // MARK: - Suspend
 
-    func setSuspended(_ value: Bool) {
+    public func setSuspended(_ value: Bool) {
         guard value != suspended else { return }
         suspended = value
         if value { releaseEverything() }
@@ -376,7 +376,7 @@ final class Engine {
     }
 
     /// Drop every key, mouse button and latch we are responsible for.
-    func releaseEverything() {
+    public func releaseEverything() {
         var keys: [CGKeyCode] = []
         for (_, action) in heldOutputs {
             if case .key(let code, _, _, _) = action { keys.append(code) }

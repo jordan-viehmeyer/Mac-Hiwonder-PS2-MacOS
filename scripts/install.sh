@@ -37,6 +37,10 @@ cat <<EOF
 
 Installed: $BIN_DIR/ps2mc
 
+For the GUI, build and install the app bundle instead:
+  ./scripts/build-app.sh
+  cp -R build/PS2MC.app /Applications/
+
 Next:
   ps2mc permissions    grant Input Monitoring and Accessibility
   ps2mc calibrate      teach it your pad's button order

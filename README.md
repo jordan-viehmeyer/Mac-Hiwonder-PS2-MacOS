@@ -9,6 +9,10 @@ No kernel extension, no DriverKit bundle, no reboot. It reads the receiver throu
 HID manager and posts synthetic events with CoreGraphics, so it works with any app that
 takes keyboard and mouse input — Minecraft is just what the defaults are shaped for.
 
+Ships as **PS2MC.app** — a SwiftUI app with a menu bar item, live controller view, visual
+binding editor and guided calibration — and as **`ps2mc`**, the same engine as a CLI. Both
+frontends share one library and one config file.
+
 - Built and tested on macOS 26.1 (build 25B78), Apple silicon, Swift 6.2.
 - Hardware: `USB WirelessGamepad`, USB `2563:0575`.
 
@@ -17,6 +21,7 @@ takes keyboard and mouse input — Minecraft is just what the defaults are shape
 ## Contents
 
 - [Install](#install)
+- [The app](#the-app)
 - [First run](#first-run)
 - [Default Minecraft mapping](#default-minecraft-mapping)
 - [Commands](#commands)
@@ -34,27 +39,61 @@ takes keyboard and mouse input — Minecraft is just what the defaults are shape
 
 ## Install
 
-Requires the Xcode Command Line Tools (`xcode-select --install`). Full Xcode is not needed.
+Requires the Xcode Command Line Tools (`xcode-select --install`). Full Xcode is not needed —
+the `.app` bundle is assembled by script rather than by `xcodebuild`.
+
+### The app
 
 ```sh
 git clone <this repo> Mac-Hiwonder-PS2-MacOS
 cd Mac-Hiwonder-PS2-MacOS
-./scripts/install.sh
+./scripts/build-app.sh
+cp -R build/PS2MC.app /Applications/
+open /Applications/PS2MC.app
 ```
 
-That builds in release mode, runs the built-in self-test, and installs to
-`/usr/local/bin/ps2mc`. Set `PREFIX=~/.local ./scripts/install.sh` to install elsewhere.
+**Keep it in `/Applications`.** macOS ties Input Monitoring and Accessibility to the app's
+path *and* its code signature, so moving the bundle later means granting both again. The
+build script ad-hoc signs it so that identity at least stays stable across rebuilds.
 
-**Install it once to a stable path and run it from there.** macOS ties Input Monitoring and
-Accessibility grants to a specific binary path, so running out of `.build/debug` means
-re-granting permissions after every rebuild.
+### The command line tool
 
-To build without installing:
+```sh
+./scripts/install.sh          # builds, self-tests, installs to /usr/local/bin/ps2mc
+```
+
+`PREFIX=~/.local ./scripts/install.sh` installs elsewhere. The same binary also ships
+inside the app at `PS2MC.app/Contents/Resources/ps2mc`, so the two are always the same
+build. To work in the tree without installing:
 
 ```sh
 swift build -c release
 .build/release/ps2mc --help
 ```
+
+## The app
+
+| Tab | What is there |
+|---|---|
+| **Status** | Permission state with request buttons, live stick and button view, calibration |
+| **Bindings** | Every button and D-pad direction, with a preset menu and a free-text field |
+| **Tuning** | Stick roles, sensitivity, deadzone, curve, smoothing, movement thresholds |
+
+The **menu bar item** is the part that matters in a full-screen game, where the window is
+unreachable: it shows connection state and offers Start/Stop and **Mute Output** without
+leaving the game. The pad's Analog button does the same thing, and the two stay in sync.
+
+Edits validate as you type — a binding that will not parse is reported in the footer with
+the field that caused it, and Save stays disabled until it is fixed. Saving writes the same
+`~/.config/ps2mc/config.json` the CLI uses and restarts the driver so changes take effect.
+
+The live controller view is the fastest way to answer the two questions that come up most:
+is the pad reaching the Mac at all, and is the button order calibrated correctly. The stick
+display draws the deadzone, so a worn stick resting outside it — the usual cause of phantom
+camera drift — is visible rather than guessed at.
+
+Calibration stops the driver first, so pressing every button in turn cannot leak keystrokes
+into whatever is behind the window.
 
 ---
 
@@ -69,6 +108,9 @@ ps2mc run           # 4. play
 
 ### 1. Permissions
 
+The app shows both on its Status tab with buttons to request them or jump straight to the
+right System Settings pane. From the CLI, `ps2mc permissions` does the same.
+
 Two separate, independently revocable grants are needed:
 
 | Permission | Why | Symptom if missing |
@@ -76,12 +118,16 @@ Two separate, independently revocable grants are needed:
 | **Input Monitoring** | read the gamepad | controller looks permanently idle |
 | **Accessibility** | post keys and mouse | sticks read fine, nothing reaches the game |
 
-`ps2mc permissions` checks both and triggers the system prompts. Grant them to whatever
-*launches* ps2mc — running from Terminal means granting them to **Terminal**, not to ps2mc.
+Grant them to whatever *launches* the driver. For the app that is **PS2MC.app** itself; for
+the CLI run from a terminal it is **Terminal** or **iTerm**, not `ps2mc`. This is the main
+practical reason to prefer the app: the bundle is a stable, signed identity, whereas a
+terminal's grant covers anything you run from it.
 
 System Settings → Privacy & Security → **Input Monitoring** / **Accessibility**.
 
 ### 2. Calibrate
+
+In the app: **Status → Calibrate buttons…**. From the CLI:
 
 PS2-to-USB adapter clones disagree about which of the 13 button bits belongs to which
 button — in particular whether the shoulder block runs `L1,R1,L2,R2` or `L2,R2,L1,R1`.
@@ -359,6 +405,11 @@ Under launchd, ps2mc is its own process, so the two permissions must be granted 
 
 ## Troubleshooting
 
+**The app shows "Permissions needed" after you granted them** — macOS keys the grant to
+the bundle's path and signature. If you rebuilt or moved the app, remove the stale entry in
+System Settings (select it, press −) and add the new one, or run
+`tccutil reset Accessibility family.theviehmeyers.ps2mc`.
+
 **"No controller found after 3s."**
 
 - Is the USB receiver plugged in and the pad powered on (LED lit)?
@@ -487,20 +538,45 @@ behaviour, and config loading. It ships in the binary rather than a SwiftPM test
 because the Command Line Tools install this is built against has no usable XCTest or
 swift-testing module.
 
-**Source layout**
+**Source layout.** Three targets: `PS2MCKit` holds the engine and has no UI or CLI in it,
+so the app and the tool cannot drift apart.
 
 | File | Role |
 |---|---|
+| **`Sources/PS2MCKit/`** | |
 | `HIDReader.swift` | IOHIDManager matching, device lifecycle, raw report capture |
 | `ControllerState.swift` | Report → decoded buttons, D-pad and axes |
 | `Config.swift`, `ConfigDecoding.swift` | Config model, defaults, lenient JSON decoding |
 | `Actions.swift` | The `kind:value@mode` binding grammar |
 | `Keycodes.swift` | Key name → ANSI virtual keycode |
 | `Engine.swift` | State diffing, action dispatch, stick shaping, smoothing, hotbar, suspend |
-| `EventSynth.swift` | CGEvent construction and posting |
+| `EventSynth.swift` | CGEvent construction, dead-reckoned cursor, quantisation |
+| `DriverController.swift` | Threaded runtime shared by both frontends |
+| `ButtonOrderLearner.swift` | Calibration state machine, shared by both frontends |
 | `Permissions.swift` | TCC checks and prompts |
-| `Calibrator.swift`, `Monitor.swift` | Interactive commands |
 | `SelfTest.swift` | Built-in checks |
+| **`Sources/PS2MCApp/`** | |
+| `PS2MCApp.swift` | App entry point, menu bar item |
+| `AppModel.swift` | Observable state: config, driver, permissions, validation |
+| `MainView.swift`, `ControllerView.swift` | Window chrome, status, live pad view |
+| `BindingsView.swift`, `TuningView.swift` | Editors |
+| `CalibrationView.swift` | Calibration sheet and its scoped HID session |
+| **`Sources/ps2mc/`** | |
+| `main.swift`, `Monitor.swift`, `Calibrator.swift` | CLI commands |
+
+**Threading.** The driver runs on its own `.userInteractive` thread with a private run
+loop, not on the main thread. In the app that keeps a 250 Hz tick away from layout and
+rendering — anything that preempts the tick shows up directly as uneven camera movement —
+and in the CLI it means `start()` returns instead of blocking. Callbacks are delivered on
+the main queue so the UI can consume them without hopping.
+
+**Bundling.** There is no Xcode here, so `scripts/build-app.sh` lays out `Contents/`
+by hand and ad-hoc signs it; `scripts/make-icon.swift` draws the icon into a `CGContext`
+and `iconutil` packs it, rather than checking a binary `.icns` into the repo. One trap
+worth knowing: the CLI ships at `Contents/Resources/ps2mc`, not `Contents/MacOS/ps2mc`,
+because the volume is case-insensitive and `MacOS/ps2mc` is the same path as
+`MacOS/PS2MC` — copying it there silently overwrites the app binary. The build script
+compares bytes afterwards to catch exactly that.
 
 ---
 

@@ -12,7 +12,7 @@ import Foundation
 /// The bit index each face button occupies is *not* fixed across PS2 adapter clones, so
 /// `ButtonID.defaultBitOrder` is only a starting point — `ps2mc calibrate` rewrites it into
 /// the config after watching the user press each button.
-enum ButtonID: String, CaseIterable, Codable {
+public enum ButtonID: String, CaseIterable, Codable {
     case y, b, a, x
     case l1, r1, l2, r2
     case select, start
@@ -20,7 +20,7 @@ enum ButtonID: String, CaseIterable, Codable {
     case analog
 
     /// Bit index in the 13-bit button field, as shipped by most 2563:0575 adapters.
-    static let defaultBitOrder: [ButtonID] = [
+    public static let defaultBitOrder: [ButtonID] = [
         .y, .b, .a, .x,
         .l1, .r1, .l2, .r2,
         .select, .start, .l3, .r3, .analog,
@@ -31,7 +31,7 @@ enum ButtonID: String, CaseIterable, Codable {
     /// These pads are sold with either lettering; the HiWonder unit is labelled Y/A/X/B.
     /// The shapes map by *position* — Y and △ are both the top button, and so on — so a
     /// config written against either labelling resolves to the same physical button.
-    static let aliases: [String: ButtonID] = [
+    public static let aliases: [String: ButtonID] = [
         "triangle": .y, "tri": .y,
         "circle": .b, "o": .b,
         "cross": .a,
@@ -43,13 +43,13 @@ enum ButtonID: String, CaseIterable, Codable {
     /// Note that `x` is deliberately *not* aliased to Cross: on a letter-labelled pad X is
     /// the left button, which is Square. Silently accepting the PlayStation reading of "x"
     /// would put drop-item on the wrong button for everyone typing the letters they see.
-    static func named(_ name: String) -> ButtonID? {
+    public static func named(_ name: String) -> ButtonID? {
         let key = name.lowercased().trimmingCharacters(in: .whitespaces)
         return ButtonID(rawValue: key) ?? aliases[key]
     }
 
     /// Label shown in `calibrate` and `monitor`.
-    var displayName: String {
+    public var displayName: String {
         switch self {
         case .y:      return "Y (top)"
         case .b:      return "B (right)"
@@ -68,7 +68,7 @@ enum ButtonID: String, CaseIterable, Codable {
     }
 
     /// Accept aliases when decoding, so a config using the shape names still loads.
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
         guard let resolved = ButtonID.named(raw) else {
             throw DecodingError.dataCorruptedError(
@@ -82,23 +82,25 @@ enum ButtonID: String, CaseIterable, Codable {
 
 /// The four D-pad directions, surfaced as discrete buttons even though the wire format
 /// encodes them as an 8-way hat.
-enum DPadID: String, CaseIterable, Codable {
+public enum DPadID: String, CaseIterable, Codable {
     case up, down, left, right
 }
 
 /// One decoded input report.
-struct ControllerState {
-    var buttons: Set<ButtonID> = []
-    var dpad: Set<DPadID> = []
+public struct ControllerState {
+    public var buttons: Set<ButtonID> = []
+    public var dpad: Set<DPadID> = []
     /// Stick axes, normalised to -1...1. Y is negative-up, matching screen coordinates.
-    var leftX: Double = 0
-    var leftY: Double = 0
-    var rightX: Double = 0
-    var rightY: Double = 0
+    public var leftX: Double = 0
+    public var leftY: Double = 0
+    public var rightX: Double = 0
+    public var rightY: Double = 0
     /// True once at least one report has been decoded.
-    var connected: Bool = false
+    public var connected: Bool = false
 
-    static let reportLength = 27
+    public static let reportLength = 27
+
+    public init() {}
 
     /// Normalise a 0...255 axis byte to -1...1, treating 128 as centre.
     private static func axis(_ raw: UInt8) -> Double {
@@ -109,7 +111,7 @@ struct ControllerState {
     }
 
     /// Decode a raw report using the given bit order. Returns nil for short reports.
-    static func decode(report: [UInt8], bitOrder: [ButtonID]) -> ControllerState? {
+    public static func decode(report: [UInt8], bitOrder: [ButtonID]) -> ControllerState? {
         guard report.count >= 7 else { return nil }
         var state = ControllerState()
         state.connected = true

@@ -7,8 +7,8 @@ import Foundation
 /// (GLFW) keys off physical key position rather than the typed character, so a fixed ANSI
 /// table is what we want here — it keeps `key:w` on the same physical key regardless of the
 /// user's active input source.
-enum Keycodes {
-    static let table: [String: CGKeyCode] = [
+public enum Keycodes {
+    public static let table: [String: CGKeyCode] = [
         // Letters
         "a": 0x00, "s": 0x01, "d": 0x02, "f": 0x03, "h": 0x04, "g": 0x05,
         "z": 0x06, "x": 0x07, "c": 0x08, "v": 0x09, "b": 0x0B, "q": 0x0C,
@@ -59,7 +59,7 @@ enum Keycodes {
     ]
 
     /// Modifier names that can prefix a key in a combo (`combo:shift+w`).
-    static let modifierFlags: [String: CGEventFlags] = [
+    public static let modifierFlags: [String: CGEventFlags] = [
         "shift": .maskShift, "leftshift": .maskShift, "rightshift": .maskShift,
         "control": .maskControl, "ctrl": .maskControl,
         "leftcontrol": .maskControl, "rightcontrol": .maskControl,
@@ -70,10 +70,10 @@ enum Keycodes {
         "fn": .maskSecondaryFn, "function": .maskSecondaryFn,
     ]
 
-    static func code(for name: String) -> CGKeyCode? {
+    public static func code(for name: String) -> CGKeyCode? {
         table[name.lowercased()]
     }
 
     /// Every recognised key name, sorted — used by `ps2mc keys`.
-    static var allNames: [String] { table.keys.sorted() }
+    public static var allNames: [String] { table.keys.sorted() }
 }
