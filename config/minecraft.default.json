@@ -1,0 +1,84 @@
+{
+  "buttonBitOrder" : [
+    "y",
+    "b",
+    "a",
+    "x",
+    "l1",
+    "r1",
+    "l2",
+    "r2",
+    "select",
+    "start",
+    "l3",
+    "r3",
+    "analog"
+  ],
+  "buttons" : {
+    "a" : "key:space",
+    "analog" : "special:toggleEngine",
+    "b" : "key:shift@toggle",
+    "l1" : "hotbar:prev",
+    "l2" : "mouse:left",
+    "l3" : "key:f",
+    "r1" : "hotbar:next",
+    "r2" : "mouse:right",
+    "r3" : "key:control@toggle",
+    "select" : "key:tab",
+    "start" : "key:escape",
+    "x" : "key:q@repeat",
+    "y" : "key:e"
+  },
+  "dpad" : {
+    "down" : "key:f5",
+    "left" : "hotbar:1",
+    "right" : "hotbar:9",
+    "up" : "key:t"
+  },
+  "hotbarMode" : "scroll",
+  "leftStick" : {
+    "look" : {
+      "deadzone" : 0.14,
+      "exponent" : 1.9,
+      "invertX" : false,
+      "invertY" : false,
+      "sensitivityX" : 1100,
+      "sensitivityY" : 800
+    },
+    "move" : {
+      "down" : "key:s",
+      "left" : "key:a",
+      "releaseHysteresis" : 0.1,
+      "right" : "key:d",
+      "threshold" : 0.45,
+      "up" : "key:w"
+    },
+    "role" : "look"
+  },
+  "matchAnyGamepad" : true,
+  "pollRateHz" : 125,
+  "productID" : 1397,
+  "repeatDelayMs" : 350,
+  "repeatIntervalMs" : 120,
+  "rightStick" : {
+    "look" : {
+      "deadzone" : 0.14,
+      "exponent" : 1.9,
+      "invertX" : false,
+      "invertY" : false,
+      "sensitivityX" : 1100,
+      "sensitivityY" : 800
+    },
+    "move" : {
+      "down" : "key:s",
+      "left" : "key:a",
+      "releaseHysteresis" : 0.1,
+      "right" : "key:d",
+      "threshold" : 0.45,
+      "up" : "key:w"
+    },
+    "role" : "move"
+  },
+  "vendorID" : 9571,
+  "version" : 1
+}

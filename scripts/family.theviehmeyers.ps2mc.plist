@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Optional LaunchAgent: start ps2mc at login and keep it running.
+
+  Install:
+    cp scripts/family.theviehmeyers.ps2mc.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/family.theviehmeyers.ps2mc.plist
+
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/family.theviehmeyers.ps2mc.plist
+
+  Note: launchd runs this as its own process, so Input Monitoring and Accessibility must be
+  granted to /usr/local/bin/ps2mc itself, not to your terminal. Run `ps2mc permissions`
+  once from a terminal first, then grant the same two toggles to ps2mc when prompted.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>family.theviehmeyers.ps2mc</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/ps2mc</string>
+        <string>run</string>
+        <string>--quiet</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Back off rather than spin if the pad is absent or permissions are missing. -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/ps2mc.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/ps2mc.err.log</string>
+</dict>
+</plist>
