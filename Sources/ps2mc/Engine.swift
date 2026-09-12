@@ -35,6 +35,23 @@ final class Engine {
     /// Auto-repeat schedule for `@repeat` actions.
     private var repeatDue: [Slot: Date] = [:]
 
+    /// Sub-pixel mouse motion carried into the next tick.
+    ///
+    /// At 125 Hz a gentle push produces well under one pixel per tick. Rounding that to an
+    /// integer each time floors it to zero, so fine aim used to be completely dead below
+    /// roughly a third of stick travel and stepped in 1 px jumps just above it. Keeping the
+    /// remainder and spending it once it adds up to a whole pixel makes slow pans smooth.
+    private var mouseResidual = (x: 0.0, y: 0.0)
+
+    /// Low-pass state for each look stick, so the camera eases in and out of motion
+    /// instead of snapping to whatever the stick reads on a single tick.
+    private var lookSmoothed: [StickSide: (x: Double, y: Double)] = [:]
+
+    /// When each move direction first fell below its release threshold. Used to hold a
+    /// direction briefly through the transient dip you get when rotating the stick past a
+    /// sector boundary, which is what makes strafing feel like it stutters.
+    private var pendingRelease: [Slot: Date] = [:]
+
     /// Hotbar slot tracked locally, only meaningful when `hotbarMode == .numbers`.
     private var hotbarSlot = 1
 
@@ -85,7 +102,7 @@ final class Engine {
         guard state.connected else { return }
 
         updateLook(dt: dt)
-        updateSlots()
+        updateSlots(now: now)
         serviceRepeats(now: now)
     }
 
@@ -98,11 +115,34 @@ final class Engine {
         for (side, stick) in [(StickSide.left, config.leftStick), (.right, config.rightStick)]
         where stick.role == .look {
             let (x, y) = axes(for: side)
-            let (cx, cy) = Engine.shape(x: x, y: y, look: stick.look)
-            dx += cx * stick.look.sensitivityX * dt * (stick.look.invertX ? -1 : 1)
-            dy += cy * stick.look.sensitivityY * dt * (stick.look.invertY ? -1 : 1)
+            let target = Engine.shape(x: x, y: y, look: stick.look)
+
+            // Exponential smoothing, framed as a time constant so the feel does not change
+            // when pollRateHz does. alpha = 1 - e^(-dt/tau) is the frame-rate-independent
+            // form; a plain fixed alpha would smooth twice as hard at twice the tick rate.
+            let tau = stick.look.smoothingMs / 1000
+            let alpha = tau > 0 ? 1 - exp(-dt / tau) : 1
+            var smoothed = lookSmoothed[side] ?? (0, 0)
+            smoothed.x += (target.0 - smoothed.x) * alpha
+            smoothed.y += (target.1 - smoothed.y) * alpha
+            // Let it settle to a true zero rather than creeping for ever on a tail that
+            // never quite reaches it, which would read as slow camera drift at rest.
+            if target.0 == 0, target.1 == 0, abs(smoothed.x) < 1e-4, abs(smoothed.y) < 1e-4 {
+                smoothed = (0, 0)
+            }
+            lookSmoothed[side] = smoothed
+
+            dx += smoothed.x * stick.look.sensitivityX * dt * (stick.look.invertX ? -1 : 1)
+            dy += smoothed.y * stick.look.sensitivityY * dt * (stick.look.invertY ? -1 : 1)
         }
-        synth.moveMouse(deltaX: dx, deltaY: dy)
+
+        // Spend whole pixels, keep the remainder for next tick.
+        dx += mouseResidual.x
+        dy += mouseResidual.y
+        let stepX = dx.rounded(.towardZero)
+        let stepY = dy.rounded(.towardZero)
+        mouseResidual = (dx - stepX, dy - stepY)
+        synth.moveMouse(deltaX: stepX, deltaY: stepY)
     }
 
     /// Apply a radial deadzone and a response curve.
@@ -128,13 +168,13 @@ final class Engine {
 
     // MARK: - Digital slots
 
-    private func updateSlots() {
+    private func updateSlots(now: Date) {
         var nowActive: Set<Slot> = []
         for button in state.buttons { nowActive.insert(.button(button)) }
         for direction in state.dpad { nowActive.insert(.dpad(direction)) }
         for (side, stick) in [(StickSide.left, config.leftStick), (.right, config.rightStick)]
         where stick.role == .move {
-            nowActive.formUnion(moveDirections(side: side, binding: stick.move))
+            nowActive.formUnion(moveDirections(side: side, binding: stick.move, now: now))
         }
 
         for slot in nowActive.subtracting(activeSlots) { press(slot) }
@@ -142,28 +182,72 @@ final class Engine {
         activeSlots = nowActive
     }
 
-    /// Convert a stick position into directional slots, with hysteresis so a stick resting
-    /// near the threshold does not machine-gun the key.
-    private func moveDirections(side: StickSide, binding: MoveBinding) -> Set<Slot> {
+    /// Convert a stick position into directional slots.
+    ///
+    /// Engagement is decided on the stick's *radial* distance, and direction only on its
+    /// angle. Testing each axis against the threshold separately — as this used to — meant
+    /// a diagonal push had to travel 1/cos(45°) ≈ 1.41x as far as a cardinal one before
+    /// anything happened, so walking forward engaged noticeably sooner than strafing
+    /// diagonally. Deciding on magnitude makes every direction engage at the same distance.
+    private func moveDirections(side: StickSide, binding: MoveBinding, now: Date) -> Set<Slot> {
         let (x, y) = axes(for: side)
-        var result: Set<Slot> = []
-        let release = max(binding.threshold - binding.releaseHysteresis, 0.05)
+        let magnitude = (x * x + y * y).squareRoot()
 
-        func evaluate(_ value: Double, negative: DPadID, positive: DPadID) {
-            let negativeSlot = Slot.move(stick: side, direction: negative)
-            let positiveSlot = Slot.move(stick: side, direction: positive)
-            let wasNegative = activeSlots.contains(negativeSlot)
-            let wasPositive = activeSlots.contains(positiveSlot)
-            if value <= -(wasNegative ? release : binding.threshold) {
-                result.insert(negativeSlot)
-            } else if value >= (wasPositive ? release : binding.threshold) {
-                result.insert(positiveSlot)
+        func slot(_ direction: DPadID) -> Slot { .move(stick: side, direction: direction) }
+        let wasEngaged = DPadID.allCases.contains { activeSlots.contains(slot($0)) }
+
+        // Hysteresis on engagement: once moving, the stick may fall a little further back
+        // before movement stops, so resting near the threshold cannot machine-gun the key.
+        let engageAt = wasEngaged
+            ? max(binding.threshold - binding.releaseHysteresis, 0.05)
+            : binding.threshold
+
+        var desired: Set<Slot> = []
+        if magnitude >= engageAt {
+            let nx = x / magnitude
+            let ny = y / magnitude
+            // A direction counts when its share of the push clears the tolerance. At the
+            // default 0.38 that is sin(22.5°), giving eight equal 45° sectors. A direction
+            // already held is kept on a slacker bound so the stick cannot flicker between
+            // "north" and "north-east" while being rotated.
+            func consider(_ component: Double, _ direction: DPadID) {
+                let held = activeSlots.contains(slot(direction))
+                let bound = held ? binding.directionTolerance * 0.75 : binding.directionTolerance
+                if component >= bound { desired.insert(slot(direction)) }
             }
+            // Y is negative-up in the report, matching screen coordinates.
+            consider(-ny, .up)
+            consider(ny, .down)
+            consider(-nx, .left)
+            consider(nx, .right)
         }
 
-        // Y is negative-up in the report, matching screen coordinates.
-        evaluate(y, negative: .up, positive: .down)
-        evaluate(x, negative: .left, positive: .right)
+        return applyReleaseDelay(desired, side: side, delayMs: binding.releaseDelayMs, now: now)
+    }
+
+    /// Hold a direction for a short grace period after it would otherwise be released.
+    ///
+    /// Rotating the stick from forward to strafe passes through angles where a key briefly
+    /// stops qualifying, and releasing on that single tick produces an audible stutter in
+    /// the game. Waiting a few tens of milliseconds before acting on a release smooths the
+    /// transition without adding latency to a genuine stop, which stays below threshold.
+    private func applyReleaseDelay(_ desired: Set<Slot>, side: StickSide,
+                                   delayMs: Double, now: Date) -> Set<Slot> {
+        guard delayMs > 0 else { return desired }
+        var result = desired
+        for slot in desired { pendingRelease[slot] = nil }
+
+        for direction in DPadID.allCases {
+            let slot = Slot.move(stick: side, direction: direction)
+            guard activeSlots.contains(slot), !desired.contains(slot) else { continue }
+            let since = pendingRelease[slot] ?? now
+            pendingRelease[slot] = since
+            if now.timeIntervalSince(since) < delayMs / 1000 {
+                result.insert(slot)
+            } else {
+                pendingRelease[slot] = nil
+            }
+        }
         return result
     }
 
@@ -313,6 +397,11 @@ final class Engine {
         heldOutputs.removeAll()
         latched.removeAll()
         repeatDue.removeAll()
+        pendingRelease.removeAll()
+        // Drop the filter and the sub-pixel remainder too, so resuming starts from rest
+        // rather than replaying motion banked before the pause.
+        lookSmoothed.removeAll()
+        mouseResidual = (0, 0)
     }
 
     private func log(_ message: String) {

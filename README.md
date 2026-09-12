@@ -112,8 +112,10 @@ The mapping the brief called for, plus sensible defaults for everything else.
 
 | Stick | Role | Detail |
 |---|---|---|
-| **Left** | Camera / look | 360° mouse look, radial deadzone, eased response curve |
-| **Right** | Movement | forward `W`, back `S`, left `A`, right `D` — diagonals work |
+| **Left** | Movement | forward `W`, back `S`, left `A`, right `D` — diagonals work |
+| **Right** | Camera / look | 360° mouse look, radial deadzone, eased and smoothed |
+
+This is the console-Minecraft convention. To swap them, see [Sticks](#sticks).
 
 ### Triggers and bumpers
 
@@ -266,37 +268,45 @@ Each stick has a `role`:
 | `move` | Drives four directional keys |
 | `none` | Ignored |
 
-**To swap the sticks** (movement on the left, camera on the right — the console-Minecraft
-convention), swap the two `role` values:
+**To swap the sticks** (camera on the left, movement on the right), swap the two `role`
+values:
 
 ```json
 {
-  "leftStick":  { "role": "move" },
-  "rightStick": { "role": "look" }
+  "leftStick":  { "role": "look" },
+  "rightStick": { "role": "move" }
 }
 ```
 
-**Look tuning** (`leftStick.look` by default):
+**Look tuning** (`rightStick.look` by default):
 
 | Field | Default | Meaning |
 |---|---|---|
 | `sensitivityX` | `1100` | Pixels of mouse travel per second at full deflection |
 | `sensitivityY` | `800` | Same, vertically — lower than X on purpose, as in most shooters |
-| `deadzone` | `0.14` | Radial deadzone, 0–1. Raise it if the camera drifts at rest |
-| `exponent` | `1.9` | Response curve. `1.0` is linear; higher gives finer aim near centre |
+| `deadzone` | `0.12` | Radial deadzone, 0–1. Raise it if the camera drifts at rest |
+| `exponent` | `1.7` | Response curve. `1.0` is linear; higher gives finer aim near centre |
+| `smoothingMs` | `35` | Smoothing time constant. Higher is smoother but less immediate; `0` disables |
 | `invertY` | `false` | Flight-sim style inverted vertical look |
 | `invertX` | `false` | Invert horizontal look |
 
 Camera too slow? Raise `sensitivityX`/`sensitivityY`. Twitchy at small movements? Raise
-`exponent`. Drifting when you let go? Raise `deadzone`.
+`exponent`. Drifting when you let go? Raise `deadzone`. Feels laggy? Lower `smoothingMs`
+toward `0`. Still steppy? Raise `pollRateHz`.
 
-**Move tuning** (`rightStick.move` by default):
+**Move tuning** (`leftStick.move` by default):
 
 | Field | Default | Meaning |
 |---|---|---|
 | `up` / `down` / `left` / `right` | `key:w` / `key:s` / `key:a` / `key:d` | Bindings, same grammar as buttons |
-| `threshold` | `0.45` | How far the stick must travel before a direction counts |
-| `releaseHysteresis` | `0.10` | Extra travel needed to release, so a stick resting near the threshold does not machine-gun the key |
+| `threshold` | `0.30` | How far the stick must travel before movement engages, measured radially |
+| `releaseHysteresis` | `0.08` | Extra travel needed to release, so a stick resting near the threshold does not machine-gun the key |
+| `directionTolerance` | `0.38` | How much of the push must point along an axis for that direction to count. `0.38` is sin(22.5°), giving eight equal 45° sectors. Lower widens diagonals; higher widens cardinals |
+| `releaseDelayMs` | `40` | Grace period before a direction is actually released, smoothing the dip you get rotating between sectors. `0` disables |
+
+Movement engaging too late? Lower `threshold`. Diagonals hard to hold? Lower
+`directionTolerance`. Direction flickering while you rotate the stick? Raise
+`releaseDelayMs`.
 
 ### Full config reference
 
@@ -372,8 +382,13 @@ Then re-grant. If you moved or reinstalled the binary, re-grant for the new path
 **Camera drifts on its own** — worn sticks rest off-centre. Check the resting values in
 `ps2mc monitor` and raise `deadzone` past the drift.
 
-**Movement keys stutter** — raise `releaseHysteresis`, or raise `threshold` if it triggers
-too eagerly.
+**Movement keys stutter** — raise `releaseDelayMs`, then `releaseHysteresis`. Raise
+`threshold` if it triggers too eagerly.
+
+**Camera feels steppy or dead at small pushes** — lower `deadzone` and `exponent`, and
+check `smoothingMs` is not far above 50. Raising `pollRateHz` to 250 also helps.
+
+**Camera feels laggy** — lower `smoothingMs` toward `0`.
 
 **A key got stuck down** — press the Analog button twice, or Ctrl-C. Both release
 everything held. If a crash ever leaves something latched, tapping the physical key clears it.
@@ -406,6 +421,22 @@ subscribes to the whole report rather than registering a callback per HID elemen
 so the camera pans at a constant speed even when the receiver coalesces or drops reports
 while the stick is held still.
 
+**Sub-pixel motion.** A gentle push produces well under one pixel of travel per tick.
+Rounding that to an integer every tick floors it to zero, which is why slow pans on naive
+drivers feel dead and then jump. ps2mc keeps the remainder and spends it once it adds up to
+a whole pixel, so fine aim is continuous all the way down to the deadzone.
+
+**Smoothing.** The shaped stick vector is low-pass filtered with a time constant rather
+than a fixed per-tick blend — `alpha = 1 - e^(-dt/tau)` — so the feel does not change if
+you alter `pollRateHz`. The filter settles to a true zero at rest instead of creeping.
+
+**Directional engagement.** Whether you are moving is decided on the stick's radial
+distance, and which way only on its angle. Testing each axis against the threshold
+separately makes a diagonal push travel 1/cos(45°) ≈ 1.41x as far as a cardinal one before
+anything happens, so walking forward would engage noticeably sooner than strafing
+diagonally. A direction already held is kept on a slacker bound, and a release waits out a
+short grace period, so rotating the stick does not stutter the keys.
+
 **Mouse look.** Minecraft's GLFW backend disables the cursor in-world, which makes it read
 `deltaX`/`deltaY` off each event rather than the absolute cursor position. ps2mc sets those
 delta fields explicitly — posting only a new absolute location would move the system cursor
@@ -434,7 +465,7 @@ swift-testing module.
 | `Config.swift`, `ConfigDecoding.swift` | Config model, defaults, lenient JSON decoding |
 | `Actions.swift` | The `kind:value@mode` binding grammar |
 | `Keycodes.swift` | Key name → ANSI virtual keycode |
-| `Engine.swift` | State diffing, action dispatch, stick shaping, hotbar, suspend |
+| `Engine.swift` | State diffing, action dispatch, stick shaping, smoothing, hotbar, suspend |
 | `EventSynth.swift` | CGEvent construction and posting |
 | `Permissions.swift` | TCC checks and prompts |
 | `Calibrator.swift`, `Monitor.swift` | Interactive commands |

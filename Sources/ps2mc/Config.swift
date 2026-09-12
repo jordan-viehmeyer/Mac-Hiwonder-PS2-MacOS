@@ -16,18 +16,27 @@ struct MoveBinding: Codable {
     var down: String
     var left: String
     var right: String
-    /// Fraction of full deflection (0...1) before a direction counts as pressed.
+    /// Radial distance (0...1) the stick must travel before movement engages.
     var threshold: Double
-    /// Extra travel required to *release* a direction, to stop chattering at the edge.
+    /// Extra travel required to *release*, so a stick resting on the edge cannot chatter.
     var releaseHysteresis: Double
+    /// How much of the push must point along an axis for that direction to count, once
+    /// engaged. 0.38 is sin(22.5°), which gives eight equal 45° sectors. Lower widens the
+    /// diagonals at the expense of the cardinals; higher does the reverse.
+    var directionTolerance: Double
+    /// Grace period before a direction is actually released, in milliseconds. Smooths the
+    /// transient dips you get rotating the stick between sectors. 0 disables it.
+    var releaseDelayMs: Double
 
     static let minecraftDefault = MoveBinding(
         up: "key:w",
         down: "key:s",
         left: "key:a",
         right: "key:d",
-        threshold: 0.45,
-        releaseHysteresis: 0.10
+        threshold: 0.30,
+        releaseHysteresis: 0.08,
+        directionTolerance: 0.38,
+        releaseDelayMs: 40
     )
 }
 
@@ -43,14 +52,18 @@ struct LookBinding: Codable {
     /// Flip vertical look (classic inverted-Y flight-sim style).
     var invertY: Bool
     var invertX: Bool
+    /// Smoothing time constant in milliseconds. Larger is smoother but less immediate;
+    /// 0 disables the filter entirely. 25–50 ms takes the edge off without feeling laggy.
+    var smoothingMs: Double
 
     static let minecraftDefault = LookBinding(
         sensitivityX: 1100,
         sensitivityY: 800,
-        deadzone: 0.14,
-        exponent: 1.9,
+        deadzone: 0.12,
+        exponent: 1.7,
         invertY: false,
-        invertX: false
+        invertX: false,
+        smoothingMs: 35
     )
 }
 
@@ -93,13 +106,14 @@ struct Config: Codable {
     /// Delay before `@repeat` starts repeating.
     var repeatDelayMs: Double = 350
 
+    /// Left stick moves, right stick looks — the console-Minecraft convention.
     var leftStick: StickConfig = StickConfig(
-        role: .look,
+        role: .move,
         look: .minecraftDefault,
         move: .minecraftDefault
     )
     var rightStick: StickConfig = StickConfig(
-        role: .move,
+        role: .look,
         look: .minecraftDefault,
         move: .minecraftDefault
     )

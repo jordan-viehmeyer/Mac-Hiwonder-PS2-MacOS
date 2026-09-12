@@ -12,7 +12,7 @@ extension CodingUserInfoKey {
 
 extension LookBinding {
     enum CodingKeys: String, CodingKey {
-        case sensitivityX, sensitivityY, deadzone, exponent, invertY, invertX
+        case sensitivityX, sensitivityY, deadzone, exponent, invertY, invertX, smoothingMs
     }
 
     init(from decoder: Decoder) throws {
@@ -24,12 +24,21 @@ extension LookBinding {
         exponent = try c.decodeIfPresent(Double.self, forKey: .exponent) ?? d.exponent
         invertY = try c.decodeIfPresent(Bool.self, forKey: .invertY) ?? d.invertY
         invertX = try c.decodeIfPresent(Bool.self, forKey: .invertX) ?? d.invertX
+        smoothingMs = try c.decodeIfPresent(Double.self, forKey: .smoothingMs) ?? d.smoothingMs
+
+        // Clamp the knobs that would otherwise silently disable the stick or make it
+        // unusable: a deadzone of 1 never leaves centre, and a huge time constant looks
+        // like the camera has stopped responding.
+        deadzone = min(max(deadzone, 0), 0.9)
+        exponent = min(max(exponent, 0.2), 5)
+        smoothingMs = min(max(smoothingMs, 0), 500)
     }
 }
 
 extension MoveBinding {
     enum CodingKeys: String, CodingKey {
         case up, down, left, right, threshold, releaseHysteresis
+        case directionTolerance, releaseDelayMs
     }
 
     init(from decoder: Decoder) throws {
@@ -42,6 +51,16 @@ extension MoveBinding {
         threshold = try c.decodeIfPresent(Double.self, forKey: .threshold) ?? d.threshold
         releaseHysteresis = try c.decodeIfPresent(Double.self, forKey: .releaseHysteresis)
             ?? d.releaseHysteresis
+        directionTolerance = try c.decodeIfPresent(Double.self, forKey: .directionTolerance)
+            ?? d.directionTolerance
+        releaseDelayMs = try c.decodeIfPresent(Double.self, forKey: .releaseDelayMs)
+            ?? d.releaseDelayMs
+
+        threshold = min(max(threshold, 0.05), 0.95)
+        releaseHysteresis = min(max(releaseHysteresis, 0), threshold - 0.02)
+        // Above 0.71 (sin 45°) no diagonal could ever qualify, leaving four-way movement.
+        directionTolerance = min(max(directionTolerance, 0.05), 0.70)
+        releaseDelayMs = min(max(releaseDelayMs, 0), 500)
     }
 }
 

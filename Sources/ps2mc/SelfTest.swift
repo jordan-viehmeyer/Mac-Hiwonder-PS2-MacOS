@@ -146,6 +146,72 @@ enum SelfTest {
         expect(near < mid && mid < far, "the response curve is monotonic")
         expect(mid < 0.6, "an exponent above 1 eases response near centre")
 
+        // MARK: Motion smoothness
+        // A gentle push must still move the camera. Before sub-pixel accumulation this
+        // rounded to zero every tick, leaving fine aim completely dead below about a third
+        // of stick travel — the single biggest source of choppy camera movement.
+        let dt = 1.0 / 125
+        var residual = 0.0
+        var pixelsMoved = 0.0
+        var ticksThatMoved = 0
+        // 18% of travel: a deliberate, slow pan, the kind fine aiming is made of.
+        let gentle = Engine.shape(x: 0.18, y: 0, look: look).0
+        for _ in 0..<125 {
+            let raw = gentle * look.sensitivityX * dt + residual
+            let step = raw.rounded(.towardZero)
+            residual = raw - step
+            pixelsMoved += step
+            if step != 0 { ticksThatMoved += 1 }
+        }
+        expect(pixelsMoved > 0, "a gentle push must still move the camera")
+        expectClose(pixelsMoved, gentle * look.sensitivityX, "a second of travel lands on target",
+                    tolerance: 1.5)
+        expect(ticksThatMoved > 1, "motion is spread across ticks rather than one jump")
+        // Without the carried remainder this same push produces nothing at all.
+        let naive = (gentle * look.sensitivityX * dt).rounded()
+        expectEqual(naive, 0, "the naive per-tick rounding this replaced floored to zero")
+
+        // Smoothing must be frame-rate independent: the same elapsed time has to produce
+        // the same result whether it arrives as few big ticks or many small ones.
+        func settle(tau: Double, dt: Double, steps: Int) -> Double {
+            var value = 0.0
+            for _ in 0..<steps { value += (1.0 - value) * (1 - exp(-dt / tau)) }
+            return value
+        }
+        let coarse = settle(tau: 0.035, dt: 1.0 / 60, steps: 60)
+        let fine = settle(tau: 0.035, dt: 1.0 / 250, steps: 250)
+        expectClose(coarse, fine, "smoothing does not change with poll rate", tolerance: 0.001)
+        expect(settle(tau: 0.035, dt: dt, steps: 1) < 0.3, "one tick only eases part-way")
+
+        // MARK: Directional engagement
+        // Engagement is radial, so every direction starts at the same distance. The old
+        // per-axis test made a diagonal need 1.41x the travel of a cardinal.
+        let move = MoveBinding.minecraftDefault
+        func engages(x: Double, y: Double) -> Bool {
+            (x * x + y * y).squareRoot() >= move.threshold
+        }
+        // Compare a cardinal and a diagonal push at the same radial distance, just past
+        // the threshold. Testing exactly *at* it only measures floating-point luck.
+        let root2: Double = 2.0.squareRoot()
+        let justPast: Double = move.threshold + 0.01
+        let justShort: Double = move.threshold - 0.01
+        expect(engages(x: 0, y: -justPast), "a cardinal push past the threshold engages")
+        expect(engages(x: justPast / root2, y: -justPast / root2),
+               "a diagonal push at the same distance engages too")
+        expect(!engages(x: 0, y: -justShort), "a cardinal push short of the threshold does not")
+        expect(!engages(x: justShort / root2, y: -justShort / root2),
+               "a diagonal push short of the threshold does not either")
+        // The regression this guards: each axis of that diagonal sits well below the
+        // threshold, so the old per-axis test would have refused to move at all.
+        expect(justPast / root2 < move.threshold,
+               "per-axis testing would have missed an engaging diagonal")
+
+        // The default tolerance must split the circle into eight even sectors.
+        expectClose(move.directionTolerance, sin(22.5 * .pi / 180),
+                    "the direction tolerance is sin(22.5°)", tolerance: 0.005)
+        expect(move.directionTolerance < root2 / 2,
+               "a diagonal's components clear the tolerance, so diagonals are reachable")
+
         // MARK: Configuration
         do {
             let resolved = try Config().resolveBindings()
@@ -159,12 +225,12 @@ enum SelfTest {
         }
 
         let defaults = Config()
-        expectEqual(defaults.leftStick.role, .look, "the left stick drives the camera")
-        expectEqual(defaults.rightStick.role, .move, "the right stick drives movement")
-        expectEqual(defaults.rightStick.move.up, "key:w", "forward is W")
-        expectEqual(defaults.rightStick.move.down, "key:s", "back is S")
-        expectEqual(defaults.rightStick.move.left, "key:a", "left is A")
-        expectEqual(defaults.rightStick.move.right, "key:d", "right is D")
+        expectEqual(defaults.leftStick.role, .move, "the left stick drives movement")
+        expectEqual(defaults.rightStick.role, .look, "the right stick drives the camera")
+        expectEqual(defaults.leftStick.move.up, "key:w", "forward is W")
+        expectEqual(defaults.leftStick.move.down, "key:s", "back is S")
+        expectEqual(defaults.leftStick.move.left, "key:a", "left is A")
+        expectEqual(defaults.leftStick.move.right, "key:d", "right is D")
 
         do {
             // These inputs are deliberately broken, so mute the repair warnings they
@@ -175,7 +241,21 @@ enum SelfTest {
             let sparse = #"{"buttons":{"a":"key:space"},"pollRateHz":9999}"#
             let config = try decoder.decode(Config.self, from: Data(sparse.utf8))
             expectEqual(config.vendorID, 0x2563, "a sparse config keeps the default vendor ID")
-            expectEqual(config.leftStick.role, .look, "a sparse config keeps stick roles")
+            expectEqual(config.leftStick.role, .move, "a sparse config keeps stick roles")
+            expectEqual(config.leftStick.move.directionTolerance,
+                        MoveBinding.minecraftDefault.directionTolerance,
+                        "a sparse config keeps the new tuning defaults")
+
+            // Values that would silently disable a stick are clamped, not honoured.
+            let absurd = #"{"rightStick":{"role":"look","look":{"deadzone":5,"smoothingMs":-3}},"leftStick":{"role":"move","move":{"threshold":9,"directionTolerance":0.99}}}"#
+            let tamed = try decoder.decode(Config.self, from: Data(absurd.utf8))
+            expect(tamed.rightStick.look.deadzone <= 0.9, "an absurd deadzone is clamped")
+            expect(tamed.rightStick.look.smoothingMs >= 0, "negative smoothing is clamped")
+            expect(tamed.leftStick.move.threshold <= 0.95, "an absurd threshold is clamped")
+            expect(tamed.leftStick.move.directionTolerance <= 0.70,
+                   "a tolerance that would kill diagonals is clamped")
+            expect(tamed.leftStick.move.releaseHysteresis < tamed.leftStick.move.threshold,
+                   "hysteresis stays below the threshold it backs off from")
             expectEqual(config.buttonBitOrder.count, 13, "a sparse config keeps a full bit order")
             expectEqual(config.pollRateHz, 500, "an absurd poll rate is clamped")
 

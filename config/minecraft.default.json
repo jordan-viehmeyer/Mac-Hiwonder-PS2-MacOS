@@ -38,22 +38,25 @@
   "hotbarMode" : "scroll",
   "leftStick" : {
     "look" : {
-      "deadzone" : 0.14,
-      "exponent" : 1.9,
+      "deadzone" : 0.12,
+      "exponent" : 1.7,
       "invertX" : false,
       "invertY" : false,
       "sensitivityX" : 1100,
-      "sensitivityY" : 800
+      "sensitivityY" : 800,
+      "smoothingMs" : 35
     },
     "move" : {
+      "directionTolerance" : 0.38,
       "down" : "key:s",
       "left" : "key:a",
-      "releaseHysteresis" : 0.1,
+      "releaseDelayMs" : 40,
+      "releaseHysteresis" : 0.08,
       "right" : "key:d",
-      "threshold" : 0.45,
+      "threshold" : 0.3,
       "up" : "key:w"
     },
-    "role" : "look"
+    "role" : "move"
   },
   "matchAnyGamepad" : true,
   "pollRateHz" : 125,
@@ -62,22 +65,25 @@
   "repeatIntervalMs" : 120,
   "rightStick" : {
     "look" : {
-      "deadzone" : 0.14,
-      "exponent" : 1.9,
+      "deadzone" : 0.12,
+      "exponent" : 1.7,
       "invertX" : false,
       "invertY" : false,
       "sensitivityX" : 1100,
-      "sensitivityY" : 800
+      "sensitivityY" : 800,
+      "smoothingMs" : 35
     },
     "move" : {
+      "directionTolerance" : 0.38,
       "down" : "key:s",
       "left" : "key:a",
-      "releaseHysteresis" : 0.1,
+      "releaseDelayMs" : 40,
+      "releaseHysteresis" : 0.08,
       "right" : "key:d",
-      "threshold" : 0.45,
+      "threshold" : 0.3,
       "up" : "key:w"
     },
-    "role" : "move"
+    "role" : "look"
   },
   "vendorID" : 9571,
   "version" : 1
