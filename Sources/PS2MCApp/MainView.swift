@@ -5,6 +5,11 @@ struct MainView: View {
     @EnvironmentObject var model: AppModel
     @State private var tab = Tab.status
     @State private var calibrating = false
+    @State private var wizard = false
+    @State private var duplicating = false
+    @State private var renaming = false
+    @State private var confirmDelete = false
+    @State private var nameField = ""
 
     enum Tab: String, CaseIterable {
         case status = "Status"
@@ -15,6 +20,8 @@ struct MainView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            Divider()
+            profileBar
             Divider()
             Picker("", selection: $tab) {
                 ForEach(Tab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
@@ -37,8 +44,37 @@ struct MainView: View {
             Divider()
             footer
         }
-        .frame(minWidth: 700, minHeight: 620)
-        .sheet(isPresented: $calibrating) { CalibrationView() }
+        .frame(minWidth: 720, minHeight: 680)
+        .sheet(isPresented: $calibrating) { CalibrationView(preview: DocsRenderer.posed != nil) }
+        .sheet(isPresented: $wizard) { WizardView(preview: DocsRenderer.posed != nil) }
+        .onAppear {
+            // `--docs-pose <view>` opens straight onto the view being screenshotted.
+            switch DocsRenderer.posed {
+            case "bindings": tab = .bindings
+            case "tuning": tab = .tuning
+            case "calibration": calibrating = true
+            case "wizard": wizard = true
+            default: break
+            }
+        }
+        .alert("Duplicate profile", isPresented: $duplicating) { nameAlert { 
+            model.duplicateActiveProfile(named: nameField) } }
+        .alert("Rename profile", isPresented: $renaming) { nameAlert {
+            model.renameActiveProfile(to: nameField) } }
+        .confirmationDialog("Delete “\(model.activeProfile?.name ?? "")”?",
+                            isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { model.deleteActiveProfile() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the profile file. It cannot be undone.")
+        }
+    }
+
+    @ViewBuilder
+    private func nameAlert(_ commit: @escaping () -> Void) -> some View {
+        TextField("Name", text: $nameField)
+        Button("Cancel", role: .cancel) {}
+        Button("Save") { commit() }
     }
 
     // MARK: - Header
@@ -71,12 +107,56 @@ struct MainView: View {
     }
 
     private var statusLine: String {
-        if !model.canRun { return "Permissions needed" }
+        if !model.fullyGranted { return "Permissions needed to send input" }
         if !model.isRunning { return "Stopped" }
         if let message = model.status.message { return message }
         if !model.status.connected { return "Running — waiting for the controller" }
         if model.status.suspended { return "Muted — output suspended" }
         return model.status.deviceName ?? "Running"
+    }
+
+    // MARK: - Profiles
+
+    private var profileBar: some View {
+        HStack(spacing: 10) {
+            Text("Profile").font(.callout).foregroundStyle(.secondary)
+            Picker("", selection: Binding(
+                get: { model.activeProfileID },
+                set: { model.selectProfile($0) })) {
+                ForEach(model.profiles) { profile in
+                    Text(profile.name).tag(profile.id)
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 260)
+
+            if model.activeIsReadOnly {
+                Label("Read-only", systemImage: "lock.fill")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .help("The recommended profile is refreshed on upgrade. "
+                          + "Duplicate it to make changes.")
+            }
+
+            Spacer()
+
+            Button("Duplicate") {
+                nameField = (model.activeProfile?.name ?? "Profile") + " copy"
+                duplicating = true
+            }
+            Button("Rename") {
+                nameField = model.activeProfile?.name ?? ""
+                renaming = true
+            }
+            .disabled(model.activeIsReadOnly)
+            Button("Delete") { confirmDelete = true }
+                .disabled(model.activeIsReadOnly || model.profiles.count < 2)
+            Button("New from wizard…") { wizard = true }
+                .disabled(!model.canReadController)
+                .help(model.canReadController ? "Map every control step by step"
+                                              : "Needs Input Monitoring")
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 9)
     }
 
     // MARK: - Status tab
@@ -86,14 +166,21 @@ struct MainView: View {
             VStack(alignment: .leading, spacing: 18) {
                 permissionsCard
                 if model.status.connected {
-                    ControllerView(state: model.live, config: model.config)
+                    ControllerDiagram(state: model.live)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
                 } else {
                     notConnectedCard
                 }
                 HStack {
                     Button("Calibrate buttons…") { calibrating = true }
-                    Button("Reveal config in Finder") { model.revealConfigInFinder() }
+                        .disabled(!model.canReadController)
+                    Button("Reveal profile in Finder") { model.revealProfilesInFinder() }
                     Spacer()
+                }
+                if let error = model.profileError {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange).font(.callout)
                 }
             }
             .padding(20)
@@ -105,22 +192,30 @@ struct MainView: View {
             Text("Permissions").font(.headline)
             permissionRow(
                 title: "Input Monitoring",
-                detail: "Required to read the controller.",
+                detail: "Read the controller. Needed for the live view, calibration "
+                    + "and the wizard.",
                 status: model.inputMonitoring,
                 action: { model.requestInputMonitoring() },
                 pane: "Privacy_ListenEvent")
             permissionRow(
                 title: "Accessibility",
-                detail: "Required to send keyboard and mouse events.",
+                detail: "Send keyboard and mouse events. Only needed to actually play.",
                 status: model.accessibility,
                 action: { model.requestAccessibility() },
                 pane: "Privacy_Accessibility")
-            if !model.canRun {
-                Text("Grant both to PS2MC itself. macOS pins these to the app's location, so "
-                     + "keep it in /Applications rather than running it from a download "
-                     + "folder or a build directory.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            if !model.fullyGranted {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("ps2mc asks for nothing else, and never prompts on its own — use "
+                         + "the buttons above. Grant these to PS2MC itself.")
+                    // The most common cause of "I granted it and it still says no", and
+                    // the one nothing in System Settings hints at.
+                    Text(Permissions.staleGrantAdvice)
+                    Button("Recheck now") { model.refreshPermissions() }
+                        .controlSize(.small)
+                        .padding(.top, 2)
+                }
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(16)
@@ -131,11 +226,21 @@ struct MainView: View {
     private func permissionRow(title: String, detail: String, status: Permissions.Status,
                                action: @escaping () -> Void, pane: String) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: status == .granted
-                  ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                .foregroundStyle(status == .granted ? .green : .orange)
+            Image(systemName: icon(for: status))
+                .foregroundStyle(status == .granted ? Color.green : Color.orange)
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.callout.weight(.medium))
+                HStack(spacing: 6) {
+                    Text(title).font(.callout.weight(.medium))
+                    // "Not yet requested" is not the same as refused, and showing them
+                    // identically is what makes a first launch look broken.
+                    if status == .notDetermined {
+                        Text("not yet requested")
+                            .font(.caption2)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(.secondary.opacity(0.15), in: Capsule())
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Text(detail).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
@@ -147,10 +252,21 @@ struct MainView: View {
         }
     }
 
+    private func icon(for status: Permissions.Status) -> String {
+        switch status {
+        case .granted: return "checkmark.circle.fill"
+        case .denied: return "exclamationmark.circle.fill"
+        case .notDetermined: return "questionmark.circle.fill"
+        }
+    }
+
     private var notConnectedCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Label("Controller not detected", systemImage: "gamecontroller")
                 .font(.headline)
+            ControllerDiagram()
+                .frame(maxWidth: .infinity)
+                .opacity(0.4)
             let ids = String(format: "%04x:%04x",
                              model.config.vendorID, model.config.productID)
             Text("""
@@ -171,9 +287,10 @@ struct MainView: View {
         HStack(spacing: 12) {
             if let error = model.validationError {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                    .font(.caption)
-                    .lineLimit(2)
+                    .foregroundStyle(.orange).font(.caption).lineLimit(2)
+            } else if model.activeIsReadOnly && model.dirty {
+                Text("Read-only profile — duplicate it to keep these changes")
+                    .font(.caption).foregroundStyle(.orange)
             } else if model.dirty {
                 Text("Unsaved changes").font(.caption).foregroundStyle(.secondary)
             } else if let saved = model.lastSaved {
@@ -181,11 +298,20 @@ struct MainView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Reset to defaults") { model.resetToDefaults() }
-            Button("Revert") { model.reload() }.disabled(!model.dirty)
-            Button("Save") { model.save() }
+            Button("Reset to recommended") { model.resetToRecommended() }
+            Button("Revert") { model.revert() }.disabled(!model.dirty)
+            if model.activeIsReadOnly {
+                Button("Duplicate to save") {
+                    nameField = (model.activeProfile?.name ?? "Profile") + " copy"
+                    duplicating = true
+                }
                 .keyboardShortcut("s")
-                .disabled(!model.dirty || model.validationError != nil)
+                .disabled(!model.dirty)
+            } else {
+                Button("Save") { model.save() }
+                    .keyboardShortcut("s")
+                    .disabled(!model.dirty || model.validationError != nil)
+            }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)

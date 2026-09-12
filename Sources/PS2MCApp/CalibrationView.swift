@@ -6,6 +6,10 @@ import SwiftUI
 /// Runs its own HID reader rather than borrowing the driver's, so calibrating never risks
 /// emitting keystrokes into whatever is behind the window.
 struct CalibrationView: View {
+    /// Renders canned state instead of opening the device. Used to produce the
+    /// documentation screenshots, which otherwise could not show a mid-calibration view.
+    var preview = false
+
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
 
@@ -14,6 +18,10 @@ struct CalibrationView: View {
     @State private var result: [ButtonID]?
     @State private var session: CalibrationSession?
     @State private var error: String?
+    @State private var done: Set<ButtonID> = []
+    /// Raw button bits, decoded with an identity order so the diagram lights whatever is
+    /// physically pressed even before we know which button that bit belongs to.
+    @State private var pressedRaw: ControllerState = ControllerState()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -27,24 +35,30 @@ struct CalibrationView: View {
                     .foregroundStyle(.orange).font(.callout)
             }
 
+            // The diagram highlights the button being asked for and lights whatever is
+            // actually pressed, so "press Y" and "Y is down" are the same picture.
+            ControllerDiagram(state: pressedRaw, prompt: prompt,
+                              completed: done, showStickPositions: false)
+                .frame(maxWidth: .infinity)
+
             ZStack {
                 RoundedRectangle(cornerRadius: 10).fill(.quaternary.opacity(0.4))
                 if let result {
-                    VStack(spacing: 8) {
+                    VStack(spacing: 6) {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.largeTitle).foregroundStyle(.green)
+                            .font(.title).foregroundStyle(.green)
                         Text("Done — \(result.count) buttons mapped").font(.headline)
                     }
                 } else if let prompt {
-                    VStack(spacing: 6) {
+                    VStack(spacing: 4) {
                         Text("Press").font(.caption).foregroundStyle(.secondary)
-                        Text(prompt.displayName).font(.title.weight(.semibold))
+                        Text(prompt.displayName).font(.title2.weight(.semibold))
                     }
                 } else {
                     Text("Waiting for the controller…").foregroundStyle(.secondary)
                 }
             }
-            .frame(height: 96)
+            .frame(height: 64)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
@@ -54,7 +68,7 @@ struct CalibrationView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(height: 120)
+            .frame(height: 88)
 
             HStack {
                 Button("Skip this button") { session?.learner.skipCurrent() }
@@ -66,12 +80,20 @@ struct CalibrationView: View {
             }
         }
         .padding(22)
-        .frame(width: 520)
+        .frame(width: 560)
         .onAppear(perform: begin)
         .onDisappear { session?.stop() }
     }
 
     private func begin() {
+        if preview {
+            prompt = .r1
+            done = [.y, .b, .a, .x, .l1]
+            pressedRaw.buttons = [.r1]
+            log = ["✓ y = bit 0", "✓ b = bit 1", "✓ a = bit 2",
+                   "✓ x = bit 3", "✓ l1 = bit 4"]
+            return
+        }
         // Stop the driver first: calibration means pressing every button, and we do not
         // want those presses reaching the game or the desktop.
         model.stop()
@@ -83,6 +105,7 @@ struct CalibrationView: View {
                     prompt = button
                 case .learned(let button, let bit):
                     log.append("✓ \(button.rawValue) = bit \(bit)")
+                    done.insert(button)
                 case .rejected(_, let conflict):
                     log.append("↺ that bit is already \(conflict.rawValue) — try another")
                 case .finished(let order):
@@ -92,7 +115,16 @@ struct CalibrationView: View {
             }
         }
         do {
-            session = try CalibrationSession(config: model.config, learner: learner)
+            session = try CalibrationSession(config: model.config, learner: learner,
+                                             onReport: { report in
+                Task { @MainActor in
+                    // Identity order: bit N lights the Nth button in the canonical list, so
+                    // the diagram reflects raw hardware rather than a mapping we are still
+                    // in the middle of working out.
+                    pressedRaw = ControllerState.decode(
+                        report: report, bitOrder: ButtonID.defaultBitOrder) ?? ControllerState()
+                }
+            })
             learner.begin()
         } catch {
             self.error = error.localizedDescription
@@ -119,9 +151,11 @@ final class CalibrationSession {
     private var thread: Thread?
     private var runLoop: CFRunLoop?
 
-    init(config: Config, learner: ButtonOrderLearner) throws {
+    init(config: Config, learner: ButtonOrderLearner,
+         onReport: @escaping ([UInt8]) -> Void) throws {
         self.learner = learner
         let reader = HIDReader(config: config, onReport: { report in
+            onReport(report)
             Task { @MainActor in learner.ingest(report: report) }
         }, onConnectionChange: { _, _ in })
         self.reader = reader

@@ -61,22 +61,44 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundlePackageType</key>           <string>APPL</string>
     <key>LSMinimumSystemVersion</key>        <string>14.0</string>
     <key>NSHighResolutionCapable</key>       <true/>
-    <key>NSHumanReadableCopyright</key>      <string>MIT licensed</string>
-    <!-- Shown in the TCC prompts, so say why rather than letting macOS ask blankly. -->
+    <key>NSHumanReadableCopyright</key>
+    <string>PolyForm Noncommercial 1.0.0 — noncommercial use only</string>
+
+    <!--
+      Exactly two permissions, and nothing else.
+
+      NSInputMonitoringUsageDescription is the only usage string present: it is shown in
+      the TCC prompt, so it should say why rather than letting macOS ask blankly.
+
+      Accessibility has no usage-string key; it is requested at runtime, and only when the
+      user presses Start. Reading the pad — live view, calibration, the wizard — needs
+      Input Monitoring alone.
+
+      Deliberately absent: NSAppleEventsUsageDescription (NSWorkspace.open needs no Apple
+      Events), and any camera, microphone, network, file, contacts, location or Bluetooth
+      key. The app makes no network connections and reads no files outside its own config
+      folder.
+    -->
     <key>NSInputMonitoringUsageDescription</key>
     <string>ps2mc reads your PS2 controller so it can drive the keyboard and mouse.</string>
-    <key>NSAppleEventsUsageDescription</key>
-    <string>ps2mc opens System Settings to the panes where you grant its permissions.</string>
 </dict>
 </plist>
 PLIST
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 
-# TCC identifies an app by its code signature. An unsigned bundle gets a fresh identity on
-# every rebuild, so granted permissions silently stop applying. Ad-hoc signing is enough to
-# keep that identity stable on one machine.
-echo "==> Signing (ad-hoc)"
-codesign --force --deep --sign - --timestamp=none "$APP"
+# TCC identifies an app by its code signature, and stores that requirement when you grant a
+# permission. Ad-hoc signing produces a requirement that is just a hash of the binary, so
+# every rebuild looks like a different app and granted permissions stop applying. A local
+# signing certificate makes the requirement name the certificate instead, so grants survive
+# rebuilds -- create one with scripts/make-signing-identity.sh.
+IDENTITY="ps2mc Local Signing"
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "$IDENTITY"; then
+  echo "==> Signing with \"$IDENTITY\""
+  codesign --force --deep --sign "$IDENTITY" --timestamp=none "$APP"
+else
+  echo "==> Signing (ad-hoc)"
+  codesign --force --deep --sign - --timestamp=none "$APP"
+fi
 codesign --verify --deep --strict "$APP" && echo "    signature OK"
 
 echo
@@ -88,3 +110,14 @@ echo "  open /Applications/$APP_NAME.app"
 echo
 echo "Keep it in /Applications -- macOS pins Input Monitoring and Accessibility to the"
 echo "app's path, so moving it later means granting them again."
+
+if ! security find-identity -v -p codesigning 2>/dev/null | grep -q "$IDENTITY"; then
+  cat <<'NOTE'
+
+Note: this build is ad-hoc signed, so macOS identifies it by a hash of the binary. After
+any rebuild it looks like a new app and you must grant the two permissions again -- remove
+the stale ps2mc entry in System Settings first, or the new one will not take.
+
+To make grants survive rebuilds:  ./scripts/make-signing-identity.sh
+NOTE
+fi

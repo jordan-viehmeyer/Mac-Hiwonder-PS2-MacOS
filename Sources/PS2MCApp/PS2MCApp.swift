@@ -14,7 +14,7 @@ struct PS2MCApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandGroup(after: .appInfo) {
-                Button("Open Config Folder") { model.revealConfigInFinder() }
+                Button("Reveal Profile in Finder") { model.revealProfilesInFinder() }
             }
         }
 
@@ -52,6 +52,50 @@ struct PS2MCApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // `--render-docs <dir>` produces the README screenshots and quits. Hidden rather
+        // than advertised: it exists for the build, not for users.
+        let args = CommandLine.arguments
+
+        // `--render-docs <dir>` writes the pure-SwiftUI diagram, which ImageRenderer
+        // handles faithfully, and quits.
+        if let flag = args.firstIndex(of: "--render-docs"), flag + 1 < args.count {
+            MainActor.assumeIsolated {
+                DocsRenderer.run(into: URL(fileURLWithPath: args[flag + 1]))
+            }
+            NSApp.terminate(nil)
+            return
+        }
+
+        // `--diagnose-permissions` prints what the TCC APIs report for this bundle over
+        // several seconds, then quits. Diagnosing "it says I have not granted it" needs
+        // the app's own identity, not a terminal's.
+        if args.contains("--diagnose-permissions") {
+            print("bundle: \(Bundle.main.bundleIdentifier ?? "none")")
+            print("path:   \(Bundle.main.bundlePath)")
+            for i in 0..<8 {
+                let hid = Permissions.inputMonitoring()
+                let ax = Permissions.accessibility()
+                print(String(format: "t=%.1fs  InputMonitoring=%@  Accessibility=%@",
+                             Double(i) * 0.5, "\(hid)", "\(ax)"))
+                usleep(500_000)
+            }
+            NSApp.terminate(nil)
+            return
+        }
+
+        // `--docs-pose <view>` shows one view at a known rect for an external capture.
+        if DocsRenderer.posed != nil {
+            let tall = ["tuning", "wizard", "calibration"].contains(DocsRenderer.posed!)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                MainActor.assumeIsolated {
+                    DocsRenderer.poseWindow(
+                        size: CGSize(width: 760, height: tall ? 860 : 780))
+                }
+            }
+        }
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         // Closing the window leaves the driver running in the menu bar, which is the point.
         false

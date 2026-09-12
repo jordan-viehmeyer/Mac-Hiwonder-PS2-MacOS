@@ -74,6 +74,24 @@ public enum Keycodes {
         table[name.lowercased()]
     }
 
+    /// Reverse lookup, for turning a captured key press back into a binding string.
+    ///
+    /// Several names share a keycode (`esc`/`escape`, `ctrl`/`control`). The preferred
+    /// spelling is listed here so the wizard writes the readable one into the config.
+    private static let preferredNames: [CGKeyCode: String] = [
+        0x24: "return", 0x33: "delete", 0x35: "escape",
+        0x38: "shift", 0x3B: "control", 0x3A: "option", 0x37: "command",
+    ]
+
+    public static func name(for code: CGKeyCode) -> String? {
+        if let preferred = preferredNames[code] { return preferred }
+        // Deterministic: several names can map to one code, so pick the shortest and
+        // break ties alphabetically rather than relying on dictionary order.
+        return table.filter { $0.value == code }.keys.min {
+            ($0.count, $0) < ($1.count, $1)
+        }
+    }
+
     /// Every recognised key name, sorted — used by `ps2mc keys`.
     public static var allNames: [String] { table.keys.sorted() }
 }

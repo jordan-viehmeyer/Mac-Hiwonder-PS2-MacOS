@@ -19,12 +19,14 @@ func printUsage() {
       calibrate      Learn which bit each button occupies and save it to the config
       permissions    Check — and offer to request — the required macOS permissions
       config         Print the active config, or its path with --path
+      profiles       List mapping profiles, or switch with `profiles use <name>`
       keys           List every key name accepted in bindings
       selftest       Verify decoding, bindings and config handling
       version        Print the version
 
     OPTIONS
-      --config <path>   Use an alternate config file
+      --profile <name>  Use a named profile for this run
+      --config <path>   Use an explicit config file, bypassing profiles
       --quiet           Suppress the startup banner and event log
       --raw             (monitor) Also print raw report bytes
       --help, -h        Show this message
@@ -34,7 +36,7 @@ func printUsage() {
       ps2mc calibrate       teach it your pad's button order
       ps2mc run             play
 
-    Config lives at \(Config.path.path)
+    Profiles live in \(Config.directory.path)/profiles
     """)
 }
 
@@ -47,11 +49,13 @@ if let first = arguments.first, !first.hasPrefix("-") {
     arguments.removeFirst()
 }
 
-var configPath = Config.path
+var configPath: URL?
+var profileName: String?
 var quiet = false
 var showRaw = false
 var showPath = false
 
+var positionals: [String] = []
 var index = 0
 while index < arguments.count {
     switch arguments[index] {
@@ -62,14 +66,25 @@ while index < arguments.count {
             exit(2)
         }
         configPath = URL(fileURLWithPath: (arguments[index] as NSString).expandingTildeInPath)
+    case "--profile":
+        index += 1
+        guard index < arguments.count else {
+            FileHandle.standardError.write("ps2mc: --profile needs a name\n".data(using: .utf8)!)
+            exit(2)
+        }
+        profileName = arguments[index]
     case "--quiet", "-q": quiet = true
     case "--raw": showRaw = true
     case "--path": showPath = true
     case "--help", "-h": printUsage(); exit(0)
     default:
-        FileHandle.standardError.write(
-            "ps2mc: unknown option '\(arguments[index])'\n".data(using: .utf8)!)
-        exit(2)
+        if positionals.count < 2, !arguments[index].hasPrefix("-") {
+            positionals.append(arguments[index])
+        } else {
+            FileHandle.standardError.write(
+                "ps2mc: unknown option '\(arguments[index])'\n".data(using: .utf8)!)
+            exit(2)
+        }
     }
     index += 1
 }
@@ -79,8 +94,30 @@ func fail(_ message: String) -> Never {
     exit(1)
 }
 
+let store = ProfileStore.shared
+
+/// Where this invocation reads and writes its mapping.
+///
+/// An explicit `--config` wins, then `--profile`, then whichever profile is active. The
+/// escape hatch matters: profiles live in a managed folder, and scripts that predate them
+/// still point at a file of their own.
+let resolvedConfigPath: URL = {
+    if let configPath { return configPath }
+    if let profileName {
+        let id = ProfileStore.slug(profileName)
+        guard store.profile(id: id) != nil else {
+            FileHandle.standardError.write(
+                "ps2mc: no profile named '\(profileName)' — try `ps2mc profiles`\n"
+                    .data(using: .utf8)!)
+            exit(2)
+        }
+        return store.url(for: id)
+    }
+    return store.url(for: store.activeID)
+}()
+
 func loadConfig() -> Config {
-    do { return try Config.load(from: configPath) }
+    do { return try Config.load(from: resolvedConfigPath) }
     catch { fail("could not read config — \(error.localizedDescription)") }
 }
 
@@ -102,11 +139,33 @@ case "selftest":
     exit(SelfTest.run())
 case "permissions":
     exit(Permissions.report(requesting: true) ? 0 : 1)
+case "profiles":
+    if positionals.first == "use" {
+        guard let wanted = positionals.dropFirst().first else {
+            fail("`ps2mc profiles use` needs a profile name")
+        }
+        let id = ProfileStore.slug(wanted)
+        guard store.profile(id: id) != nil else {
+            fail("no profile named '\(wanted)' — try `ps2mc profiles`")
+        }
+        store.setActive(id)
+        print("Active profile: \(ProfileStore.displayName(for: id))")
+        exit(0)
+    }
+    print("Mapping profiles in \(Config.directory.path)/profiles\n")
+    for profile in store.profiles {
+        let marker = profile.id == store.activeID ? "*" : " "
+        let tag = profile.isBuiltIn ? "  (built-in, read-only)" : ""
+        print("  \(marker) \(profile.name)\(tag)")
+    }
+    print("\nSwitch with:  ps2mc profiles use <name>")
+    print("Run one once: ps2mc run --profile <name>")
+    exit(0)
 case "config":
-    if showPath { print(configPath.path); exit(0) }
+    if showPath { print(resolvedConfigPath.path); exit(0) }
     let config = loadConfig()
     do {
-        _ = try config.resolveBindings(source: configPath)
+        _ = try config.resolveBindings(source: resolvedConfigPath)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         print(String(data: try encoder.encode(config), encoding: .utf8) ?? "")
@@ -175,12 +234,12 @@ switch command {
 case "run":
     do {
         session.engine = try Engine(config: config, synth: session.synth,
-                                    verbose: !quiet, source: configPath)
+                                    verbose: !quiet, source: resolvedConfigPath)
     } catch {
         fail(error.localizedDescription)
     }
 case "calibrate":
-    session.calibrator = Calibrator(config: config, configPath: configPath)
+    session.calibrator = Calibrator(config: config, configPath: resolvedConfigPath)
 default:
     break
 }
@@ -234,7 +293,7 @@ case "run":
           left stick  → \(config.leftStick.role.rawValue)
           right stick → \(config.rightStick.role.rawValue)
           hotbar mode → \(config.hotbarMode.rawValue)
-          config      → \(configPath.path)
+          profile     → \(resolvedConfigPath.deletingPathExtension().lastPathComponent)
         Press Ctrl-C to stop. Press the pad's Analog button to mute output.
         """)
 

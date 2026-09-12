@@ -184,6 +184,46 @@ public struct Config: Codable {
         "right": "hotbar:9",         // jump to last hotbar slot
     ]
 
+    /// The mapping most players should start from.
+    ///
+    /// Follows Minecraft's own console layout as closely as keyboard emulation allows, on
+    /// the theory that anyone picking up a controller already has those reflexes: triggers
+    /// for the two world verbs, bumpers for the hotbar, A to jump, B to sneak, X for
+    /// inventory, Y to drop, and sprint on the movement stick's own click.
+    ///
+    /// Differences from the console worth knowing: sneak and sprint latch rather than
+    /// needing to be held, because a keyboard modifier held for minutes is what makes
+    /// controller-to-keyboard mappings tiring; and the D-pad doubles the hotbar on
+    /// left/right, which the console does not have to bother with.
+    public static var minecraftRecommended: Config {
+        var config = Config()
+        config.buttons = [
+            "l2": "mouse:left",            // attack / destroy
+            "r2": "mouse:right",           // use / place
+            "l1": "hotbar:prev",
+            "r1": "hotbar:next",
+
+            "a": "key:space",              // jump
+            "b": "key:shift@toggle",       // sneak, latched
+            "x": "key:e",                  // inventory
+            "y": "key:q@repeat",           // drop; held to empty a stack
+
+            "l3": "key:control@toggle",    // sprint, on the stick that moves you
+            "r3": "key:f5",                // cycle perspective
+
+            "select": "key:tab",           // player list
+            "start": "key:escape",         // pause / release the mouse
+            "analog": "special:toggleEngine",
+        ]
+        config.dpad = [
+            "up": "key:t",                 // chat
+            "down": "key:f",               // swap to off-hand
+            "left": "hotbar:prev",
+            "right": "hotbar:next",
+        ]
+        return config
+    }
+
     // MARK: - Persistence
 
     public static var directory: URL {

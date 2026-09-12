@@ -344,6 +344,68 @@ public enum SelfTest {
             failures.append("config round-trip threw: \(error.localizedDescription)")
         }
 
+        // MARK: Recommended profile
+        do {
+            let recommended = Config.minecraftRecommended
+            let resolved = try recommended.resolveBindings()
+            expectEqual(resolved.buttons[.l2], .mouse(.left, mode: .hold), "L2 destroys")
+            expectEqual(resolved.buttons[.r2], .mouse(.right, mode: .hold), "R2 places")
+            expectEqual(resolved.buttons[.l1], .hotbarPrev, "L1 steps the hotbar back")
+            expectEqual(resolved.buttons[.r1], .hotbarNext, "R1 steps the hotbar forward")
+            expectEqual(resolved.buttons[.a], .key(0x31, name: "space", flags: [], mode: .hold),
+                        "A jumps, as on every console")
+            expectEqual(resolved.buttons[.analog], .toggleEngine, "Analog mutes output")
+            // Sprint belongs on the stick that actually moves you.
+            expectEqual(recommended.buttons["l3"], "key:control@toggle", "L3 sprints")
+            expectEqual(recommended.leftStick.role, .move, "the left stick moves")
+            expectEqual(recommended.rightStick.role, .look, "the right stick looks")
+            // Every control must be bound: an unmapped button on the shipped profile is a
+            // dead button for anyone who never opens the editor.
+            for button in ButtonID.allCases {
+                expect(recommended.buttons[button.rawValue] != nil,
+                       "recommended profile binds \(button.rawValue)")
+            }
+            for direction in DPadID.allCases {
+                expect(recommended.dpad[direction.rawValue] != nil,
+                       "recommended profile binds d-pad \(direction.rawValue)")
+            }
+        } catch {
+            failures.append("the recommended profile does not resolve: "
+                + error.localizedDescription)
+        }
+
+        // MARK: Profile naming
+        expectEqual(ProfileStore.slug("My Mapping 2"), "my-mapping-2", "names become slugs")
+        expectEqual(ProfileStore.slug("  Speed   Run!  "), "speed-run",
+                    "punctuation and padding collapse")
+        expectEqual(ProfileStore.slug("!!!"), "", "a name with nothing usable yields no slug")
+        expectEqual(ProfileStore.displayName(for: "my-settings"), "My Settings",
+                    "slugs read back as titles")
+        expectEqual(ProfileStore.displayName(for: ProfileStore.recommendedID),
+                    "Minecraft (Recommended)", "the built-in keeps its proper name")
+
+        // MARK: Key name round-trip
+        // The wizard captures a keycode and has to write a name the parser accepts again.
+        for name in ["w", "space", "escape", "f5", "shift", "control", "1", "slash"] {
+            guard let code = Keycodes.code(for: name) else {
+                failures.append("no keycode for '\(name)'"); continue
+            }
+            guard let back = Keycodes.name(for: code) else {
+                failures.append("no name for keycode of '\(name)'"); continue
+            }
+            expectEqual(Keycodes.code(for: code == 0 ? name : back), code,
+                        "'\(name)' survives a keycode round-trip as '\(back)'")
+            do {
+                _ = try Action.parse("key:\(back)")
+                checks += 1
+            } catch {
+                failures.append("round-tripped name '\(back)' no longer parses")
+                checks += 1
+            }
+        }
+        expect(Keycodes.name(for: 0x35) == "escape", "escape prefers its long spelling")
+        expect(Keycodes.name(for: 0x3B) == "control", "control prefers its long spelling")
+
         // MARK: Hotbar wrapping
         expectEqual((0 - 1) %% 9, 8, "stepping below slot 1 wraps to 9")
         expectEqual((8 + 1) %% 9, 0, "stepping past slot 9 wraps to 1")

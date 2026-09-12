@@ -10,8 +10,10 @@ HID manager and posts synthetic events with CoreGraphics, so it works with any a
 takes keyboard and mouse input — Minecraft is just what the defaults are shaped for.
 
 Ships as **PS2MC.app** — a SwiftUI app with a menu bar item, live controller view, visual
-binding editor and guided calibration — and as **`ps2mc`**, the same engine as a CLI. Both
-frontends share one library and one config file.
+binding editor, guided calibration and a mapping wizard — and as **`ps2mc`**, the same
+engine as a CLI. Both frontends share one library and the same profiles.
+
+![The Status tab](docs/screenshots/status.png)
 
 - Built and tested on macOS 26.1 (build 25B78), Apple silicon, Swift 6.2.
 - Hardware: `USB WirelessGamepad`, USB `2563:0575`.
@@ -22,6 +24,7 @@ frontends share one library and one config file.
 
 - [Install](#install)
 - [The app](#the-app)
+- [Profiles](#profiles)
 - [First run](#first-run)
 - [Default Minecraft mapping](#default-minecraft-mapping)
 - [Commands](#commands)
@@ -88,14 +91,81 @@ the field that caused it, and Save stays disabled until it is fixed. Saving writ
 `~/.config/ps2mc/config.json` the CLI uses and restarts the driver so changes take effect.
 
 The live controller view is the fastest way to answer the two questions that come up most:
-is the pad reaching the Mac at all, and is the button order calibrated correctly. The stick
-display draws the deadzone, so a worn stick resting outside it — the usual cause of phantom
-camera drift — is visible rather than guessed at.
+is the pad reaching the Mac at all, and is the button order calibrated correctly.
 
-Calibration stops the driver first, so pressing every button in turn cannot leak keystrokes
-into whatever is behind the window.
+![The controller view](docs/screenshots/controller.png)
+
+### Bindings
+
+![The Bindings tab](docs/screenshots/bindings.png)
+
+Every control gets a preset menu *and* a free-text field over the same value, because the
+binding grammar expresses more than a menu reasonably can (`combo:shift+w`, `scroll:up*3`).
+Edits validate as you type: a binding that will not parse is named in the footer along with
+the field that caused it, and Save stays disabled until it is fixed.
+
+### Tuning
+
+![The Tuning tab](docs/screenshots/tuning.png)
+
+Sliders for stick roles, sensitivity, deadzone, response curve, smoothing, and the movement
+thresholds. The look section translates sensitivity into something you can actually judge —
+*"a full push turns about 1.17× per second"* — rather than leaving you to guess what 2800
+px/s means.
+
+### Calibration
+
+![Calibration](docs/screenshots/calibration.png)
+
+The same controller diagram, with the button being asked for **lit in orange** and anything
+already learned check-marked. Whatever you physically press lights up too, so "press R1"
+and "R1 is down" are the same picture. It stops the driver first, so pressing every button
+in turn cannot leak keystrokes into whatever is behind the window.
+
+### Mapping wizard
+
+![The mapping wizard](docs/screenshots/wizard.png)
+
+Walks every control in turn and **captures the actual key you press** — no typing binding
+strings, no hunting through a menu. Modifiers held with a key become a combo; mouse buttons
+and scroll work too. Each step offers the four behaviours (hold, tap, toggle, repeat) with
+a line on what each is for.
+
+It ends at **Save As**, never overwriting anything: experimenting with a layout cannot cost
+you the one you already play with. Anything skipped keeps the recommended default, so
+quitting half-way still leaves a usable profile.
+
+The wizard uses a *local* event monitor — it only sees keys already delivered to its own
+window. A global monitor would read every keystroke on the machine and require
+Accessibility, which is not a reasonable thing to demand just to ask which key you want.
 
 ---
+
+## Profiles
+
+Mappings are named profiles in `~/.config/ps2mc/profiles/`, one JSON file each. Switch with
+the picker at the top of the window, or from the CLI:
+
+```sh
+ps2mc profiles                  # list them; * marks the active one
+ps2mc profiles use "My Mapping" # switch
+ps2mc run --profile "My Mapping"  # use one for a single run
+```
+
+Two ship out of the box:
+
+| Profile | What it is |
+|---|---|
+| **Minecraft (Recommended)** | The mapping below. Read-only, and refreshed on upgrade, so improvements reach you — duplicate it to make changes |
+| **My Settings** | Your pre-profiles `config.json`, migrated automatically on first run |
+
+The migration copies rather than moves: the original `config.json` stays where it was, so
+anything pointing at it with `--config` keeps working.
+
+**Duplicate** copies the current profile under a new name, **Rename** and **Delete** do the
+obvious, and **New from wizard…** builds one from scratch by capturing keys. The recommended
+profile can be duplicated but not edited in place; the Save button becomes *Duplicate to
+save* when it is selected, so an edit is never silently lost.
 
 ## First run
 
@@ -117,6 +187,10 @@ Two separate, independently revocable grants are needed:
 |---|---|---|
 | **Input Monitoring** | read the gamepad | controller looks permanently idle |
 | **Accessibility** | post keys and mouse | sticks read fine, nothing reaches the game |
+
+A permission shown as **not yet requested** is not the same as refused — it simply has
+never been evaluated for this build, and the first attempt will prompt. The app
+distinguishes the two rather than showing both as a warning.
 
 Grant them to whatever *launches* the driver. For the app that is **PS2MC.app** itself; for
 the CLI run from a terminal it is **Terminal** or **iTerm**, not `ps2mc`. This is the main
@@ -150,9 +224,10 @@ underlying report bytes.
 
 ---
 
-## Default Minecraft mapping
+## The recommended Minecraft mapping
 
-The mapping the brief called for, plus sensible defaults for everything else.
+Follows Minecraft's own console layout as closely as keyboard emulation allows, on the
+theory that anyone picking up a controller already has those reflexes.
 
 ### Sticks
 
@@ -160,8 +235,6 @@ The mapping the brief called for, plus sensible defaults for everything else.
 |---|---|---|
 | **Left** | Movement | forward `W`, back `S`, left `A`, right `D` — diagonals work |
 | **Right** | Camera / look | 360° mouse look, radial deadzone, eased and smoothed |
-
-This is the console-Minecraft convention. To swap them, see [Sticks](#sticks).
 
 ### Triggers and bumpers
 
@@ -180,13 +253,12 @@ shapes. Positions are the usual ones: Y top, A bottom, X left, B right.
 | Button | Binding | Minecraft |
 |---|---|---|
 | **A** (bottom) | `key:space` | Jump |
-| **B** (right) | `key:shift@toggle` | Sneak — latched, so no held thumb on long descents |
-| **Y** (top) | `key:e` | Inventory |
-| **X** (left) | `key:q@repeat` | Drop item; hold to empty a stack |
+| **B** (right) | `key:shift@toggle` | Sneak — latched |
+| **X** (left) | `key:e` | Inventory |
+| **Y** (top) | `key:q@repeat` | Drop; hold to empty a stack |
 
 > **Shape names still work.** `triangle`, `circle`, `cross` and `square` are accepted
-> anywhere a button name is read, and map by position: △→Y, ○→B, ✕→A, □→X. A config
-> written for a shape-labelled pad loads unchanged.
+> anywhere a button name is read, and map by position: △→Y, ○→B, ✕→A, □→X.
 >
 > One deliberate exception: plain `x` always means the **X button (left)**, never Cross.
 > If your pad has shapes and you mean Cross, write `cross`.
@@ -195,22 +267,24 @@ shapes. Positions are the usual ones: Y top, A bottom, X left, B right.
 
 | Button | Binding | Minecraft |
 |---|---|---|
-| L3 (left stick click) | `key:f` | Swap item to off-hand |
-| R3 (right stick click) | `key:control@toggle` | Sprint — latched |
+| L3 (left stick click) | `key:control@toggle` | Sprint — latched, on the stick that moves you |
+| R3 (right stick click) | `key:f5` | Cycle camera perspective |
 | Select | `key:tab` | Player list |
 | Start | `key:escape` | Pause / release mouse grab |
 | **Analog / Mode** | `special:toggleEngine` | **Mute all output** — the panic button |
 | D-pad ↑ | `key:t` | Chat |
-| D-pad ↓ | `key:f5` | Cycle camera perspective |
-| D-pad ← | `hotbar:1` | First hotbar slot |
-| D-pad → | `hotbar:9` | Last hotbar slot |
+| D-pad ↓ | `key:f` | Swap to off-hand |
+| D-pad ← / → | `hotbar:prev` / `hotbar:next` | Hotbar, doubling the bumpers |
+
+Two deliberate departures from the console: **sneak and sprint latch** rather than needing
+to be held, because a keyboard modifier held down for minutes is what makes
+controller-to-keyboard mappings tiring; and the D-pad doubles the hotbar, which a console
+does not have to bother with.
 
 > **The Analog button is your escape hatch.** Press it to suspend the driver — every held
 > key and mouse button is released and the sticks stop moving the cursor — so you can
 > alt-tab, type, or walk away without the pad fighting you. Press it again to resume.
-> Ctrl-C also releases everything cleanly.
-
----
+> Ctrl-C, the menu bar item and the window's Muted switch all do the same.
 
 ## Commands
 
@@ -220,13 +294,15 @@ shapes. Positions are the usual ones: Y top, A bottom, X left, B right.
 | `ps2mc monitor` | Live view of decoded controller state. `--raw` adds report bytes. |
 | `ps2mc calibrate` | Learn the pad's button bit order and save it. |
 | `ps2mc permissions` | Check and request the two required macOS permissions. |
-| `ps2mc config` | Print the active config. `--path` prints just its location. |
+| `ps2mc profiles` | List profiles. `profiles use <name>` switches the active one. |
+| `ps2mc config` | Print the active profile's config. `--path` prints its location. |
 | `ps2mc keys` | List every key name accepted in a binding. |
 | `ps2mc selftest` | Verify decoding, the binding grammar, the look curve and config handling. |
 | `ps2mc version` | Print the version. |
 
-Global options: `--config <path>` to use an alternate config file, `--quiet` to suppress
-the banner and event log, `--help`.
+Global options: `--profile <name>` to use a named profile for one run, `--config <path>` to
+point at an explicit file and bypass profiles entirely, `--quiet` to suppress the banner and
+event log, `--help`.
 
 ---
 
@@ -405,10 +481,39 @@ Under launchd, ps2mc is its own process, so the two permissions must be granted 
 
 ## Troubleshooting
 
-**The app shows "Permissions needed" after you granted them** — macOS keys the grant to
-the bundle's path and signature. If you rebuilt or moved the app, remove the stale entry in
-System Settings (select it, press −) and add the new one, or run
-`tccutil reset Accessibility family.theviehmeyers.ps2mc`.
+**The app says a permission is missing after you granted it.** Almost always a stale
+entry. Without a paid Apple Developer ID the app is ad-hoc signed, which makes its code
+requirement a bare hash of the binary:
+
+```
+# designated => cdhash H"c760778819d8513e..."
+```
+
+TCC stores that when you grant. Any rebuild changes the binary, so macOS sees a *different
+app* — the old entry sits in System Settings looking correct while applying to nothing.
+
+Fix it by removing the stale entry (select ps2mc, press −) and adding the current app back.
+To stop it recurring:
+
+```sh
+./scripts/make-signing-identity.sh   # one-time, needs your admin password
+./scripts/build-app.sh
+```
+
+That signs with a local certificate instead, so the requirement names the certificate
+rather than the binary and grants survive rebuilds. It is optional — skip it and just
+re-grant after each rebuild. It adds a locally-trusted signing certificate to your
+keychain; remove it any time with
+`security delete-certificate -c "ps2mc Local Signing"`.
+
+**To see exactly what the app detects:**
+
+```sh
+/Applications/PS2MC.app/Contents/MacOS/PS2MC --diagnose-permissions
+```
+
+Prints what the TCC APIs report for the bundle's own identity, once every half second, then
+quits. Useful because a terminal's permissions are not the app's.
 
 **"No controller found after 3s."**
 
@@ -553,12 +658,11 @@ so the app and the tool cannot drift apart.
 | `EventSynth.swift` | CGEvent construction, dead-reckoned cursor, quantisation |
 | `DriverController.swift` | Threaded runtime shared by both frontends |
 | `ButtonOrderLearner.swift` | Calibration state machine, shared by both frontends |
-| `Permissions.swift` | TCC checks and prompts |
+| `Permissions.swift` | TCC checks and prompts, via the CG preflight APIs |
 | `SelfTest.swift` | Built-in checks |
 | **`Sources/PS2MCApp/`** | |
 | `PS2MCApp.swift` | App entry point, menu bar item |
 | `AppModel.swift` | Observable state: config, driver, permissions, validation |
-| `MainView.swift`, `ControllerView.swift` | Window chrome, status, live pad view |
 | `BindingsView.swift`, `TuningView.swift` | Editors |
 | `CalibrationView.swift` | Calibration sheet and its scoped HID session |
 | **`Sources/ps2mc/`** | |
@@ -569,6 +673,13 @@ loop, not on the main thread. In the app that keeps a 250 Hz tick away from layo
 rendering — anything that preempts the tick shows up directly as uneven camera movement —
 and in the CLI it means `start()` returns instead of blocking. Callbacks are delivered on
 the main queue so the UI can consume them without hopping.
+
+**Screenshots.** `scripts/screenshots.sh` regenerates the images in this README. The
+controller diagram is pure SwiftUI shapes, so it is rendered off-screen with
+`ImageRenderer`; everything else contains AppKit-backed controls (`Picker`, `Toggle`) and
+`ScrollView` contents, which `ImageRenderer` leaves blank, so those are captured from the
+live app — it poses its own window at a known rect under `--docs-pose` and prints the rect
+for `screencapture -R`. Needs Screen Recording permission for the terminal running it.
 
 **Bundling.** There is no Xcode here, so `scripts/build-app.sh` lays out `Contents/`
 by hand and ad-hoc signs it; `scripts/make-icon.swift` draws the icon into a `CGContext`
@@ -595,4 +706,52 @@ beyond Foundation.
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+**[PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/)**
+— see [LICENSE](LICENSE). Free for any noncommercial purpose: personal use, hobby projects,
+research, education, charities and government. **Commercial use is not permitted.**
+
+Worth being clear about two things:
+
+- This is a *source-available* licence, not an open-source one. The noncommercial
+  restriction means it does not meet the OSI definition, so it is not "MIT-style" and
+  GitHub will not label it an open-source project.
+- It restricts the **use of this software**, not what you do while using it. Streaming or
+  making videos of yourself playing Minecraft with it is personal use of the software, not
+  a commercial use of it.
+
+If you want a commercial licence, that is the copyright holder's to grant.
+
+## Permissions, in full
+
+The app asks for exactly two things, and nothing else:
+
+| Permission | Why | Needed for |
+|---|---|---|
+| **Input Monitoring** | read the controller | live view, calibration, the wizard, playing |
+| **Accessibility** | post keyboard and mouse events | playing only |
+
+Everything that merely *reads* the pad works with Input Monitoring alone — **nothing asks
+for Accessibility until you press Start.** Neither is ever requested on launch; both are
+behind buttons on the Status tab.
+
+Detection uses `CGPreflightPostEventAccess` and `CGPreflightListenEventAccess` rather than
+`AXIsProcessTrusted`. The CG calls ask the exact question that matters — *may I post
+events*, *may I read them* — while `AXIsProcessTrusted` answers the adjacent "am I an
+assistive client" and is known to cache its answer for the life of the process, which makes
+a freshly granted permission look ignored until you relaunch. The app also rechecks when it
+returns to the front, since granting happens in System Settings, and its polling timer runs
+in the common run-loop mode so it keeps firing while a menu or sheet is open.
+
+The bundle declares one usage string (`NSInputMonitoringUsageDescription`) and no
+entitlements. There is no camera, microphone, network, location, contacts, Bluetooth or
+file-access key, because none is used: the app makes no network connections and reads no
+files outside `~/.config/ps2mc`. You can check for yourself:
+
+```sh
+plutil -p /Applications/PS2MC.app/Contents/Info.plist | grep -i usage
+codesign -d --entitlements - /Applications/PS2MC.app
+```
+
+The mapping wizard captures keys with a *local* event monitor, which only sees events
+already delivered to its own window — a global monitor would read every keystroke on the
+machine and require Accessibility just to ask which key you want.
